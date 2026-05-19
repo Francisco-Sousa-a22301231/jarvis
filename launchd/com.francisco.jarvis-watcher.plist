@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent for the proactive VIP-mail watcher.
+
+  Install: cp launchd/com.francisco.jarvis-watcher.plist ~/Library/LaunchAgents/
+           launchctl load ~/Library/LaunchAgents/com.francisco.jarvis-watcher.plist
+  Disable: launchctl unload ~/Library/LaunchAgents/com.francisco.jarvis-watcher.plist
+  Cadence: every 300 seconds (5 minutes)
+  Output:  ~/.jarvis/watcher.log
+
+  Requires: [mail].backend = "gmail" + a populated [watcher].vip_senders list
+  in ~/.jarvis/config.toml. Posts macOS notifications via osascript when a
+  VIP sends new unread mail.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.francisco.jarvis-watcher</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/francisco/StudioProjects/jarvis/.venv/bin/python</string>
+        <string>-m</string>
+        <string>jarvis</string>
+        <string>watch</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/francisco/StudioProjects/jarvis</string>
+
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/francisco/.jarvis/watcher.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/francisco/.jarvis/watcher.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>

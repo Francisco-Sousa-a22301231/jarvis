@@ -271,11 +271,82 @@ cp hooks/claude-code-stop-hook.example.json <your-project>/.claude/settings.json
 The spec generator skips on read-only sessions / tiny diffs (< 8 lines), so
 it's safe to leave the hook always-on.
 
-## Phase 5 preview
+## Phase 5 — Multi-project, send-mail, watcher
 
-- Send-mail skill (Gmail + confirmation gate)
-- A "watcher" that surfaces important new mail / Trello / calendar changes proactively
-- Multi-project routing (Phase 2 placeholder finally resolved)
+### Multi-project routing
+
+Configure multiple projects in `~/.jarvis/config.toml`:
+
+```toml
+[[projects]]
+name = "mylessons"
+path = "~/StudioProjects/MyLessons-Project"
+aliases = ["my lessons", "lessons"]
+
+[[projects]]
+name = "jarvis"
+path = "~/StudioProjects/jarvis"
+```
+
+Voice utterances pick a project explicitly:
+
+```
+"in mylessons add a dark mode toggle"      → coder runs in MyLessons
+"on jarvis fix the brief composer"          → coder runs in jarvis
+"mylessons: refactor the auth module"       → coder runs in MyLessons
+"add a dark mode toggle to settings"        → coder runs in the first/default project
+```
+
+The first project in the array is the default when no project is named.
+
+### Send-mail skill
+
+New skill `mail_send` (requires_confirm=True). The agent extracts
+`{to, subject, body}` from your transcript with Haiku and resolves nicknames
+via `~/.jarvis/contacts.toml`.
+
+```toml
+# ~/.jarvis/contacts.toml
+[contacts]
+pedro = "pedro@example.com"
+mom = "mom@example.com"
+"ana costa" = "ana@example.com"
+```
+
+Flow:
+```
+You:    "Email Pedro that I'll be 10 minutes late"
+Jarvis: "I'll email Pedro at pedro@example.com: subject 'Running late', body 'I'll be 10 minutes late.'. Confirm?"
+You:    "yes"  →  sent
+```
+
+Requires Gmail OAuth (Phase 4 — the same client just needs reconsent for
+the new `gmail.send` scope; happens automatically on the first send).
+
+### Proactive watcher
+
+`jarvis watch` does a one-shot scan for unread mail from VIP senders and
+posts macOS notifications. Designed to be scheduled by launchd:
+
+```toml
+[watcher]
+vip_senders = ["boss@company.com", "client@example.com"]
+```
+
+```bash
+cp launchd/com.francisco.jarvis-watcher.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.francisco.jarvis-watcher.plist
+```
+
+Runs every 5 minutes by default; state at `~/.jarvis/watcher-state.json`
+ensures no double-notifications.
+
+## Phase 6 preview
+
+- Calendar lead-time + Trello-list-move watchers (extends the framework)
+- A "memory query" skill — "Jarvis, what did I ask you to do this morning?"
+- Hot-reloadable skills directory (drop a .py file in `~/.jarvis/skills/`)
+- iOS Shortcuts integration for phone-as-remote
 
 ## Costs (rough, personal-use)
 

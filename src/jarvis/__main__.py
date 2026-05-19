@@ -11,7 +11,7 @@ import argparse
 import logging
 import sys
 
-from .cli import cmd_brief, cmd_daemon, cmd_qa, cmd_route, cmd_spec
+from .cli import cmd_brief, cmd_daemon, cmd_qa, cmd_route, cmd_spec, cmd_watch
 from .config import Config
 
 
@@ -23,6 +23,7 @@ def main() -> int:
     sub.add_parser("brief", help="Compose and print today's brief")
     sub.add_parser("qa", help="Run the QA agent on the pending spec")
     sub.add_parser("spec", help="Generate a QA spec from the project's uncommitted diff")
+    sub.add_parser("watch", help="One-shot watcher: notify on new VIP mail (for launchd)")
 
     route_p = sub.add_parser("route", help="Debug: route a piece of text")
     route_p.add_argument("text", help="Text to classify")
@@ -49,6 +50,8 @@ def main() -> int:
         return cmd_qa(config)
     if cmd == "spec":
         return cmd_spec(config)
+    if cmd == "watch":
+        return cmd_watch(config)
     if cmd == "route":
         return cmd_route(config, args.text)
 

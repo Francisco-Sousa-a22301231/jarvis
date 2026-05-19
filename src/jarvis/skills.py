@@ -38,6 +38,11 @@ SKILL_CATALOG: tuple[Skill, ...] = (
         description="Read unread emails from macOS Mail app. ex: 'any new emails', 'check my inbox'",
     ),
     Skill(
+        id="mail_send",
+        description="Compose and send an email via Gmail. ex: 'email Pedro that I'll be late', 'send mom a message saying happy birthday'",
+        requires_confirm=True,
+    ),
+    Skill(
         id="brief",
         description="Combined daily summary of calendar + mail + Trello. ex: 'morning brief', 'catch me up'",
     ),

@@ -38,8 +38,10 @@ def is_yes(transcript: str) -> bool:
 def proposal_for(skill: str, task: str) -> str:
     """Build a short, speakable description of the proposed action.
 
-    Each confirmable skill gets its own phrasing so the user knows exactly
-    what's about to happen.
+    For skills with complex extraction (like mail_send, which needs to
+    resolve a recipient, subject and body), the agent itself implements
+    a `propose(task)` method and the loop prefers that. This function is
+    the static fallback.
     """
     if skill == "trello_create":
         return f"I'll add to Trello: {task}."

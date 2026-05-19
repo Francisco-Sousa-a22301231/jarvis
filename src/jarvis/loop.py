@@ -1,10 +1,9 @@
 """Main daemon loop: wake -> record -> transcribe -> route -> dispatch -> speak.
 
-Phase 4 additions:
-  - Rolling memory of last ~10 utterances; router uses it only when the
-    transcript looks anaphoric.
-  - Voice confirmation gate for skills marked `requires_confirm` in the
-    catalog (currently `trello_create`).
+Phase 5 additions:
+  - Multi-project routing — pre-step extracts project mention before the
+    router runs; coder shim picks the right Coder instance.
+  - Send-mail skill (Gmail + confirmation gate).
 """
 from __future__ import annotations
 
@@ -14,6 +13,7 @@ from .agents.brief import BriefAgent
 from .agents.calendar import CalendarAgent
 from .agents.direct import DirectAgent
 from .agents.mail import build_mail_agent  # selects applescript or gmail
+from .agents.mail_send import MailSendAgent
 from .agents.qa import QAAgent
 from .agents.trello import TrelloAgent
 from .coder import Coder
@@ -23,6 +23,7 @@ from .dispatcher import Dispatcher
 from .ears import Ears
 from .memory import Memory
 from .mouth import Mouth
+from .projects import resolve_project
 from .router import route
 from .skills import requires_confirm
 
@@ -31,15 +32,19 @@ log = logging.getLogger(__name__)
 CANCEL_TOKENS = ("cancel that", "never mind", "nevermind", "forget it")
 
 
-def _build_dispatcher(config: Config) -> Dispatcher:
-    # Coder is required (Phase 1's reason for existing).
-    coder = Coder(
-        project_root=config.default_project,
-        claude_bin=config.claude_bin,
-        dangerously_skip_permissions=config.dangerously_skip_permissions,
-        timeout_seconds=config.timeout_seconds,
-    )
-    coder.check()
+def _build_dispatcher(config: Config) -> tuple[Dispatcher, "_CoderShim"]:
+    # Coder per configured project. The shim picks the right one per dispatch.
+    coders: dict[str, Coder] = {}
+    for p in config.projects:
+        coders[p.name] = Coder(
+            project_root=p.path,
+            claude_bin=config.claude_bin,
+            dangerously_skip_permissions=config.dangerously_skip_permissions,
+            timeout_seconds=config.timeout_seconds,
+        )
+    # Validate that at least the default project is usable.
+    coders[config.projects[0].name].check()
+    coder_shim = _CoderShim(coders, default_name=config.projects[0].name)
 
     # Trello is optional — daemon still works without credentials.
     try:
@@ -57,11 +62,17 @@ def _build_dispatcher(config: Config) -> Dispatcher:
         mcp_config_path=config.mcp_config_path,
         claude_bin=config.claude_bin,
     )
+    mail_send = MailSendAgent(
+        gmail_credentials_path=config.gmail_credentials_path,
+        gmail_token_path=config.gmail_token_path,
+        contacts_path=config.contacts_path,
+    )
 
     agents = {
-        "code": _CoderShim(coder),
+        "code": coder_shim,
         "calendar": calendar,
         "mail": mail,
+        "mail_send": mail_send,
         "direct": direct,
         "brief": brief,
         "qa": qa,
@@ -69,18 +80,31 @@ def _build_dispatcher(config: Config) -> Dispatcher:
     if trello is not None:
         agents["trello_query"] = trello
         agents["trello_create"] = trello
-    return Dispatcher(agents)
+    return Dispatcher(agents), coder_shim
 
 
 class _CoderShim:
-    """Adapts Coder.execute(task) -> CoderResult into Agent.execute -> str."""
+    """Project-aware Coder dispatcher.
 
-    def __init__(self, coder: Coder):
-        self._coder = coder
+    The loop calls `set_next_project()` after resolving the project from the
+    transcript; the next `execute()` uses that Coder, then the slot resets.
+    """
+
+    def __init__(self, coders: dict[str, Coder], default_name: str):
+        self._coders = coders
+        self._default = default_name
+        self._next_name: str | None = None
+
+    def set_next_project(self, name: str | None) -> None:
+        self._next_name = name
 
     def execute(self, task: str) -> str:
-        result = self._coder.execute(task)
-        return result.short
+        name = self._next_name or self._default
+        self._next_name = None
+        coder = self._coders.get(name)
+        if coder is None:
+            return f"No coder configured for project {name!r}."
+        return coder.execute(task).short
 
 
 def run(config: Config) -> None:
@@ -103,7 +127,7 @@ def run(config: Config) -> None:
         voice_id=config.elevenlabs_voice_id,
         model=config.elevenlabs_model,
     )
-    dispatcher = _build_dispatcher(config)
+    dispatcher, coder_shim = _build_dispatcher(config)
     memory = Memory()
 
     mouth.speak("Jarvis online.")
@@ -128,12 +152,27 @@ def run(config: Config) -> None:
                 mouth.speak("Cancelled.")
                 continue
 
-            decision = route(transcript, memory=memory)
+            # Extract project mention (e.g. "in MyLessons add..."). If found,
+            # strip it from the transcript before routing.
+            proj, cleaned = resolve_project(transcript, config.projects)
+            if proj is not None:
+                log.info("Project: %s", proj.name)
+                coder_shim.set_next_project(proj.name)
+
+            decision = route(cleaned, memory=memory)
             log.info("Routed: %s | %s", decision.skill, decision.task)
 
-            # Confirmation gate for destructive skills (trello_create, future mail_send, ...).
+            # Confirmation gate for destructive skills.
             if requires_confirm(decision.skill):
-                proposal = proposal_for(decision.skill, decision.task)
+                agent = dispatcher.agents.get(decision.skill)
+                if agent is not None and hasattr(agent, "propose"):
+                    try:
+                        proposal = agent.propose(decision.task)
+                    except Exception:
+                        log.exception("propose() failed; falling back to static template")
+                        proposal = proposal_for(decision.skill, decision.task)
+                else:
+                    proposal = proposal_for(decision.skill, decision.task)
                 mouth.speak(f"{proposal} Confirm?")
                 confirm_audio = ears.record_utterance(max_seconds=8.0, silence_seconds=1.5)
                 confirm_text = ears.transcribe(confirm_audio)

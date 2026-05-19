@@ -1,0 +1,10 @@
+# Nickname → email map for the mail_send skill.
+# Copy to ~/.jarvis/contacts.toml. The mail_send agent looks up names from
+# your voice request here, so "send Pedro an email saying..." resolves
+# correctly without you having to read out the address.
+
+[contacts]
+# nickname = "email@example.com"
+# pedro = "pedro@example.com"
+# mom = "mom@example.com"
+# "ana costa" = "ana@example.com"

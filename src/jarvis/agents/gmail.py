@@ -22,7 +22,10 @@ from ..llm import haiku
 
 log = logging.getLogger(__name__)
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
+]
 
 
 class GmailAgent:
@@ -139,3 +142,26 @@ class GmailAgent:
             return "\n".join(self._fetch_unread())
         except Exception:
             return ""
+
+    # ─── Outbound ──────────────────────────────────────────────────────────
+
+    def send(self, to: str, subject: str, body: str) -> str:
+        """Send a plain-text email via the authenticated Gmail account."""
+        import base64
+        from email.mime.text import MIMEText
+
+        service, err = self._service_or_error()
+        if err is not None:
+            return err
+        msg = MIMEText(body)
+        msg["to"] = to
+        msg["subject"] = subject
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")
+        try:
+            service.users().messages().send(
+                userId="me", body={"raw": raw}
+            ).execute()
+        except Exception as e:
+            log.exception("Gmail send failed")
+            return f"Couldn't send: {e}"
+        return f"Sent to {to}."
