@@ -12,6 +12,7 @@ import logging
 import re
 from dataclasses import dataclass
 
+from .fastpath import try_fastpath
 from .llm import haiku
 from .skills import catalog_lines, skill_ids
 
@@ -49,7 +50,14 @@ def _system_prompt() -> str:
 
 
 def route(transcript: str) -> Routed:
-    """Classify the transcript. Falls back to 'direct' on any parse failure."""
+    """Classify the transcript. Tries the keyword fast-path first to skip
+    a Haiku spawn on unambiguous phrases. Falls back to 'direct' on any
+    parse failure."""
+    fast = try_fastpath(transcript)
+    if fast is not None:
+        log.info("Fast-path: %s | %s", fast.skill, fast.task)
+        return fast
+
     valid = set(skill_ids())
     raw = haiku(
         system=_system_prompt(),

@@ -10,7 +10,9 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class Config:
-    picovoice_key: str
+    # picovoice_key is None when not configured. Only the daemon subcommand
+    # needs it; `brief`, `route`, and `qa` work fine without audio.
+    picovoice_key: str | None
     elevenlabs_key: str | None
     elevenlabs_voice_id: str
     elevenlabs_model: str
@@ -21,6 +23,7 @@ class Config:
     claude_bin: str
     dangerously_skip_permissions: bool
     timeout_seconds: int
+    mcp_config_path: Path
     vad_aggressiveness: int
     silence_seconds: float
     max_utterance_seconds: float
@@ -45,9 +48,7 @@ class Config:
 
         picovoice_key = os.getenv("PICOVOICE_KEY") or pico.get("access_key", "")
         if not picovoice_key or picovoice_key.startswith("YOUR_"):
-            raise ValueError(
-                "Picovoice access key missing. Set PICOVOICE_KEY env or fill picovoice.access_key in config."
-            )
+            picovoice_key = None  # daemon will validate at startup
 
         elevenlabs_key = os.getenv("ELEVENLABS_KEY") or eleven.get("api_key")
         if elevenlabs_key and elevenlabs_key.startswith("YOUR_"):
@@ -65,6 +66,9 @@ class Config:
             claude_bin=coder.get("claude_bin", "claude"),
             dangerously_skip_permissions=bool(coder.get("dangerously_skip_permissions", False)),
             timeout_seconds=int(coder.get("timeout_seconds", 600)),
+            mcp_config_path=Path(
+                data.get("qa", {}).get("mcp_config", "~/.jarvis/mcp.json")
+            ).expanduser(),
             vad_aggressiveness=int(vad.get("aggressiveness", 2)),
             silence_seconds=float(vad.get("silence_seconds", 1.0)),
             max_utterance_seconds=float(vad.get("max_utterance_seconds", 30.0)),

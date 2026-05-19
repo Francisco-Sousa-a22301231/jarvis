@@ -11,6 +11,7 @@ import sys
 from .agents.brief import BriefAgent
 from .agents.calendar import CalendarAgent
 from .agents.mail import MailAgent
+from .agents.qa import QAAgent
 from .agents.trello import TrelloAgent
 from .config import Config
 from .router import route
@@ -59,3 +60,15 @@ def cmd_daemon(config: Config) -> int:
         log.exception("Fatal error in daemon loop")
         return 1
     return 0
+
+
+def cmd_qa(config: Config) -> int:
+    """Run the QA agent against the spec in the configured project dir."""
+    agent = QAAgent(
+        project_root=config.default_project,
+        mcp_config_path=config.mcp_config_path,
+        claude_bin=config.claude_bin,
+    )
+    result = agent.execute(task="")
+    print(result)
+    return 0 if result.upper().startswith("PASS") else 1

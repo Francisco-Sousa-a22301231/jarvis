@@ -40,6 +40,10 @@ SKILL_CATALOG: tuple[Skill, ...] = (
         description="Combined daily summary of calendar + mail + Trello. ex: 'morning brief', 'catch me up'",
     ),
     Skill(
+        id="qa",
+        description="Run QA tests against the live app using the pending test spec. ex: 'run QA', 'test what I just built', 'verify the feature'",
+    ),
+    Skill(
         id="direct",
         description="Smalltalk, greetings, factual questions, status checks. ex: 'hello', 'are you there', 'what time is it'",
     ),

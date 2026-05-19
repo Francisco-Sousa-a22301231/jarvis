@@ -13,6 +13,7 @@ from .agents.brief import BriefAgent
 from .agents.calendar import CalendarAgent
 from .agents.direct import DirectAgent
 from .agents.mail import MailAgent
+from .agents.qa import QAAgent
 from .agents.trello import TrelloAgent
 from .coder import Coder
 from .config import Config
@@ -47,6 +48,11 @@ def _build_dispatcher(config: Config) -> Dispatcher:
     mail = MailAgent()
     direct = DirectAgent()
     brief = BriefAgent(trello=trello, calendar=calendar, mail=mail)
+    qa = QAAgent(
+        project_root=config.default_project,
+        mcp_config_path=config.mcp_config_path,
+        claude_bin=config.claude_bin,
+    )
 
     agents = {
         "code": _CoderShim(coder),
@@ -54,6 +60,7 @@ def _build_dispatcher(config: Config) -> Dispatcher:
         "mail": mail,
         "direct": direct,
         "brief": brief,
+        "qa": qa,
     }
     if trello is not None:
         agents["trello_query"] = trello
@@ -73,6 +80,13 @@ class _CoderShim:
 
 
 def run(config: Config) -> None:
+    if not config.picovoice_key:
+        raise RuntimeError(
+            "PICOVOICE_KEY not set — daemon needs a Picovoice access key. "
+            "Get one free at https://console.picovoice.ai/ and set it in "
+            "~/.jarvis/config.toml or via PICOVOICE_KEY env. "
+            "(brief/route/qa subcommands work without it.)"
+        )
     ears = Ears(
         picovoice_key=config.picovoice_key,
         whisper_model=config.whisper_model,
