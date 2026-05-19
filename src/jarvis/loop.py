@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 
+from .agents import planner
 from .agents.brief import BriefAgent
 from .agents.calendar import build_calendar_agent
 from .agents.direct import DirectAgent
@@ -25,6 +26,7 @@ from .ears import Ears
 from .memory import Memory
 from .mouth import Mouth
 from .projects import resolve_project
+from .prompt_registry import PromptRegistry
 from .router import route
 from .skills import requires_confirm
 from .skills_loader import load_dir as load_custom_skills
@@ -34,7 +36,11 @@ log = logging.getLogger(__name__)
 CANCEL_TOKENS = ("cancel that", "never mind", "nevermind", "forget it")
 
 
-def _build_dispatcher(config: Config, memory: Memory) -> tuple[Dispatcher, "_CoderShim"]:
+def _build_dispatcher(
+    config: Config,
+    memory: Memory,
+    registry: PromptRegistry,
+) -> tuple[Dispatcher, "_CoderShim"]:
     # Coder per configured project. The shim picks the right one per dispatch.
     coders: dict[str, Coder] = {}
     for p in config.projects:
@@ -43,6 +49,7 @@ def _build_dispatcher(config: Config, memory: Memory) -> tuple[Dispatcher, "_Cod
             claude_bin=config.claude_bin,
             dangerously_skip_permissions=config.dangerously_skip_permissions,
             timeout_seconds=config.timeout_seconds,
+            prompt_registry=registry,
         )
     # Validate that at least the default project is usable.
     coders[config.projects[0].name].check()
@@ -103,12 +110,16 @@ class _CoderShim:
 
     The loop calls `set_next_project()` after resolving the project from the
     transcript; the next `execute()` uses that Coder, then the slot resets.
+
+    Also remembers the *most recent* CoderResult on `last_result` so QA can
+    feed PASS/FAIL back to the prompt registry against the right template_id.
     """
 
     def __init__(self, coders: dict[str, Coder], default_name: str):
         self._coders = coders
         self._default = default_name
         self._next_name: str | None = None
+        self.last_result = None  # type: ignore[assignment]
 
     def set_next_project(self, name: str | None) -> None:
         self._next_name = name
@@ -119,7 +130,9 @@ class _CoderShim:
         coder = self._coders.get(name)
         if coder is None:
             return f"No coder configured for project {name!r}."
-        return coder.execute(task).short
+        result = coder.execute(task)
+        self.last_result = result
+        return result.short
 
 
 def run(config: Config) -> None:
@@ -143,7 +156,8 @@ def run(config: Config) -> None:
         model=config.elevenlabs_model,
     )
     memory = Memory()
-    dispatcher, coder_shim = _build_dispatcher(config, memory)
+    registry = PromptRegistry()
+    dispatcher, coder_shim = _build_dispatcher(config, memory, registry)
 
     mouth.speak("Jarvis online.")
     log.info("Waiting for wake word ('jarvis')...")
@@ -177,6 +191,20 @@ def run(config: Config) -> None:
             decision = route(cleaned, memory=memory)
             log.info("Routed: %s | %s", decision.skill, decision.task)
 
+            # Planner: for ambiguous code tasks, ask one clarifying question first.
+            if decision.skill == "code":
+                question = planner.clarification(decision.task)
+                if question:
+                    mouth.speak(question)
+                    answer_audio = ears.record_utterance(max_seconds=15.0, silence_seconds=1.2)
+                    answer = ears.transcribe(answer_audio)
+                    log.info("Clarification answer: %r", answer)
+                    if answer.strip():
+                        decision = decision.__class__(  # Routed is frozen
+                            skill=decision.skill,
+                            task=planner.merge_clarification(decision.task, question, answer),
+                        )
+
             # Confirmation gate for destructive skills.
             if requires_confirm(decision.skill):
                 agent = dispatcher.agents.get(decision.skill)
@@ -204,5 +232,17 @@ def run(config: Config) -> None:
             response = dispatcher.execute(decision)
             mouth.speak(response)
             memory.append(transcript, decision.skill, response)
+
+            # Outcome wiring: if QA just ran and there's a pending code dispatch,
+            # score the template that produced it.
+            if decision.skill == "qa" and coder_shim.last_result is not None:
+                cr = coder_shim.last_result
+                if cr.template_id is not None and cr.task:
+                    upper = response.upper().lstrip()
+                    if upper.startswith("PASS"):
+                        registry.record_outcome(cr.template_id, cr.task, "success", response[:200])
+                    elif upper.startswith("FAIL"):
+                        registry.record_outcome(cr.template_id, cr.task, "failure", response[:200])
+                    coder_shim.last_result = None  # one-shot — don't double-score
     finally:
         ears.close()

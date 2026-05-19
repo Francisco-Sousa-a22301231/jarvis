@@ -433,9 +433,48 @@ curl -X POST http://127.0.0.1:8765/command \
 Auth: every `POST /command` must include `Authorization: Bearer <token>`.
 `GET /healthz` is unauthenticated for monitoring.
 
-## Phase 7 preview
+## Phase 7 — Prompt evolution + smart planner
 
-- Streaming responses over HTTP (so the phone can hear progress on long Claude Code runs)
+Two ideas ported (license-safe, fresh implementations) from a similar voice-
+assistant project worth a look:
+
+### Versioned Coder prompts with A/B selection + outcome tracking
+
+Every Claude Code dispatch goes through a template now (see
+[prompt_registry.py](src/jarvis/prompt_registry.py)). The registry:
+- Seeds a default `coder_v1` template on first run (`~/.jarvis/prompts.json`).
+- Picks epsilon-greedy from active templates per dispatch — exploration plus
+  exploitation of the current best.
+- Records pass/fail outcomes when the QA agent runs after a code dispatch
+  in the same session — that's the strongest signal we have for "did the
+  coder do what the user wanted".
+
+```bash
+python -m jarvis prompts list      # all templates (active/inactive)
+python -m jarvis prompts stats     # win rates by template
+python -m jarvis prompts evolve    # propose a new template from worst's failures
+python -m jarvis prompts feedback coder_v1 success --task "manual record"
+python -m jarvis prompts deactivate coder_v3
+```
+
+`evolve` picks the worst-performing active template (with ≥ 3 failures), feeds
+recent failure transcripts to Haiku, and asks for an improved sibling. The
+new template lands as `coder_vXXXXXX` and starts collecting A/B traffic
+immediately. Old templates are not deactivated — they keep competing.
+
+### Smart planner: one clarifying question before slow ops
+
+For ambiguous code tasks ("fix the auth bug" — *which* bug?), the planner
+asks **one** clarifying question via Haiku before spawning Claude Code.
+Saves a wasted ~30-second Claude Code spawn on under-specified tasks.
+
+The planner is conservative by default — most requests pass straight through.
+You'll only hear it ask when the missing info would materially change the
+implementation.
+
+## Phase 8 preview
+
+- Streaming HTTP responses (so the phone hears progress on long Claude Code runs)
 - Skill marketplace / shareable skill bundles
 - macOS menu-bar app wrapping the daemon
 - Memory query with date filters ("what did I ask yesterday")

@@ -14,6 +14,7 @@ import sys
 from .cli import (
     cmd_brief,
     cmd_daemon,
+    cmd_prompts,
     cmd_qa,
     cmd_route,
     cmd_serve,
@@ -43,6 +44,22 @@ def main() -> int:
     route_p = sub.add_parser("route", help="Debug: route a piece of text")
     route_p.add_argument("text", help="Text to classify")
 
+    prompts_p = sub.add_parser(
+        "prompts",
+        help="Inspect / evolve / feedback the Coder prompt registry",
+    )
+    prompts_sub = prompts_p.add_subparsers(dest="prompts_action")
+    prompts_sub.add_parser("list", help="List all templates")
+    prompts_sub.add_parser("stats", help="Per-template win rates")
+    prompts_sub.add_parser("evolve", help="Propose an improved version of the worst template")
+    fb = prompts_sub.add_parser("feedback", help="Manually record success/failure for a template")
+    fb.add_argument("template_id")
+    fb.add_argument("outcome", choices=["success", "failure", "unknown"])
+    fb.add_argument("--task", default="", help="Optional task description for the record")
+    for verb in ("activate", "deactivate"):
+        p = prompts_sub.add_parser(verb, help=f"{verb.title()} a template (toggles A/B inclusion)")
+        p.add_argument("template_id")
+
     args = parser.parse_args()
     cmd = args.cmd or "daemon"
 
@@ -71,6 +88,11 @@ def main() -> int:
         return cmd_serve(config)
     if cmd == "route":
         return cmd_route(config, args.text)
+    if cmd == "prompts":
+        if not args.prompts_action:
+            prompts_p.print_help()
+            return 1
+        return cmd_prompts(config, args.prompts_action, args)
 
     parser.print_help()
     return 1
