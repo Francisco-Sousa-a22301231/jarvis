@@ -122,6 +122,114 @@ def cmd_serve(config: Config) -> int:
     return serve(config)
 
 
+def cmd_listen(config: Config, *, loop_mode: bool) -> int:
+    """Push-to-talk: press Enter, speak one utterance, get a response. Repeat
+    if `loop_mode`. Bypasses the wake word entirely — works without a
+    Picovoice key.
+    """
+    # Local imports so importing cli doesn't pull in audio deps for non-audio
+    # subcommands.
+    from .ears import Ears
+    from .loop import _build_dispatcher
+    from .memory import Memory
+    from .mouth import Mouth
+    from .projects import resolve_project
+    from .prompt_registry import PromptRegistry
+    from .router import route
+    from .skills import requires_confirm
+    from .confirmation import is_yes, proposal_for
+    from .agents import planner
+
+    print("Loading models (Whisper, etc.)...", flush=True)
+    ears = Ears(
+        picovoice_key=None,  # explicit: no wake word here
+        whisper_model=config.whisper_model,
+        whisper_device=config.whisper_device,
+        whisper_compute_type=config.whisper_compute_type,
+        vad_aggressiveness=config.vad_aggressiveness,
+    )
+    mouth = Mouth(
+        elevenlabs_key=config.elevenlabs_key,
+        voice_id=config.elevenlabs_voice_id,
+        model=config.elevenlabs_model,
+    )
+    memory = Memory()
+    registry = PromptRegistry()
+    dispatcher, coder_shim = _build_dispatcher(config, memory, registry)
+
+    print("Ready. Press Enter to speak, Ctrl-C to quit.")
+    try:
+        while True:
+            try:
+                input("> ")
+            except EOFError:
+                return 0
+
+            print("Listening... (speak now)", flush=True)
+            audio = ears.record_utterance(
+                max_seconds=config.max_utterance_seconds,
+                silence_seconds=config.silence_seconds,
+            )
+            transcript = ears.transcribe(audio).strip()
+            if not transcript:
+                print("(nothing heard)")
+                if not loop_mode:
+                    return 0
+                continue
+            print(f"You: {transcript}")
+
+            proj, cleaned = resolve_project(transcript, config.projects)
+            if proj is not None:
+                coder_shim.set_next_project(proj.name)
+
+            decision = route(cleaned, memory=memory)
+            print(f"Route: {decision.skill}")
+
+            # Planner clarification (text-mode for cmd_listen).
+            if decision.skill == "code":
+                question = planner.clarification(decision.task)
+                if question:
+                    print(f"Jarvis: {question}")
+                    mouth.speak(question)
+                    answer = input("Clarification > ").strip()
+                    if answer:
+                        decision = decision.__class__(
+                            skill=decision.skill,
+                            task=planner.merge_clarification(decision.task, question, answer),
+                        )
+
+            if requires_confirm(decision.skill):
+                agent = dispatcher.agents.get(decision.skill)
+                if agent is not None and hasattr(agent, "propose"):
+                    try:
+                        proposal = agent.propose(decision.task)
+                    except Exception:
+                        proposal = proposal_for(decision.skill, decision.task)
+                else:
+                    proposal = proposal_for(decision.skill, decision.task)
+                print(f"Jarvis: {proposal} Confirm? [y/N]")
+                mouth.speak(f"{proposal} Confirm?")
+                confirm_text = input("> ").strip()
+                if not is_yes(confirm_text):
+                    print("Cancelled.")
+                    if not loop_mode:
+                        return 0
+                    continue
+
+            response = dispatcher.execute(decision)
+            print(f"Jarvis: {response}")
+            mouth.speak(response)
+            memory.append(transcript, decision.skill, response)
+
+            if not loop_mode:
+                return 0
+    except KeyboardInterrupt:
+        print("\nBye.")
+        return 0
+    finally:
+        ears.close()
+
+
 def cmd_prompts(config: Config, action: str, args) -> int:
     """Inspect, evolve, and feedback on the prompt registry."""
     from .prompt_evolution import evolve

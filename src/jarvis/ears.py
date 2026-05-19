@@ -23,16 +23,21 @@ class Ears:
 
     def __init__(
         self,
-        picovoice_key: str,
+        picovoice_key: str | None = None,
         whisper_model: str = "base.en",
         whisper_device: str = "cpu",
         whisper_compute_type: str = "int8",
         vad_aggressiveness: int = 2,
     ):
-        self.porcupine = pvporcupine.create(
-            access_key=picovoice_key,
-            keywords=["jarvis"],
-        )
+        # Porcupine is optional — push-to-talk mode (`jarvis listen`) and the
+        # HTTP server work fine without a wake word. Only the always-on
+        # daemon needs it.
+        self.porcupine = None
+        if picovoice_key:
+            self.porcupine = pvporcupine.create(
+                access_key=picovoice_key,
+                keywords=["jarvis"],
+            )
         self.vad = webrtcvad.Vad(vad_aggressiveness)
         log.info("Loading Whisper model %s (%s, %s)...", whisper_model, whisper_device, whisper_compute_type)
         self.whisper = WhisperModel(
@@ -44,10 +49,17 @@ class Ears:
 
     @property
     def porcupine_frame_length(self) -> int:
+        if self.porcupine is None:
+            raise RuntimeError("Wake word disabled — call record_utterance() directly.")
         return self.porcupine.frame_length  # 512 samples @ 16kHz
 
     def wait_for_wake(self) -> None:
         """Block until 'Jarvis' wake word detected."""
+        if self.porcupine is None:
+            raise RuntimeError(
+                "Wake word disabled (no Picovoice key configured). "
+                "Use `jarvis listen` for push-to-talk instead."
+            )
         with sd.RawInputStream(
             samplerate=self.SAMPLE_RATE,
             channels=1,
@@ -124,4 +136,5 @@ class Ears:
         return " ".join(s.text for s in segments).strip()
 
     def close(self) -> None:
-        self.porcupine.delete()
+        if self.porcupine is not None:
+            self.porcupine.delete()
