@@ -10,7 +10,7 @@ import sys
 
 from .agents.brief import BriefAgent
 from .agents.calendar import CalendarAgent
-from .agents.mail import MailAgent
+from .agents.mail import build_mail_agent
 from .agents.qa import QAAgent
 from .agents.trello import TrelloAgent
 from .config import Config
@@ -19,7 +19,7 @@ from .router import route
 log = logging.getLogger(__name__)
 
 
-def _build_brief_agent() -> BriefAgent:
+def _build_brief_agent(config: Config) -> BriefAgent:
     try:
         trello: TrelloAgent | None = TrelloAgent()
     except RuntimeError as e:
@@ -28,13 +28,13 @@ def _build_brief_agent() -> BriefAgent:
     return BriefAgent(
         trello=trello,
         calendar=CalendarAgent(),
-        mail=MailAgent(),
+        mail=build_mail_agent(config),
     )
 
 
-def cmd_brief(_config: Config) -> int:
+def cmd_brief(config: Config) -> int:
     """Compose today's brief and print to stdout. Suitable for launchd."""
-    brief = _build_brief_agent()
+    brief = _build_brief_agent(config)
     print(brief.execute(task=""))
     return 0
 
@@ -72,3 +72,15 @@ def cmd_qa(config: Config) -> int:
     result = agent.execute(task="")
     print(result)
     return 0 if result.upper().startswith("PASS") else 1
+
+
+def cmd_spec(config: Config) -> int:
+    """Generate a QA spec from the project's uncommitted diff."""
+    from .qa_spec import generate_spec
+
+    result = generate_spec(
+        project_root=config.default_project,
+        claude_bin=config.claude_bin,
+    )
+    print(result.message)
+    return 0 if result.success else 1

@@ -1,9 +1,13 @@
 """Haiku-powered router: voice transcript -> (skill_id, cleaned task).
 
-Low-context discipline: the router NEVER sees conversation history. It sees
-only the static skill catalog and the latest transcript. Same input → same
-decision, so the system block hits the prompt cache on every call after the
-first.
+Low-context discipline: by default the router sees only the static skill
+catalog and the latest transcript — same input → same decision → prompt-cache
+hit on every call after the first.
+
+History (last 2 utterances) is loaded *only* when the transcript looks
+anaphoric (contains "it", "that", "same", "again", ...). For ~80% of
+utterances we pay zero memory tokens; for the rest, history is ~80 extra
+tokens for a much better resolution.
 """
 from __future__ import annotations
 
@@ -14,6 +18,7 @@ from dataclasses import dataclass
 
 from .fastpath import try_fastpath
 from .llm import haiku
+from .memory import Memory, needs_history
 from .skills import catalog_lines, skill_ids
 
 log = logging.getLogger(__name__)
@@ -49,19 +54,36 @@ def _system_prompt() -> str:
     return _ROUTER_SYSTEM.format(catalog=catalog_lines())
 
 
-def route(transcript: str) -> Routed:
+def route(transcript: str, memory: Memory | None = None) -> Routed:
     """Classify the transcript. Tries the keyword fast-path first to skip
     a Haiku spawn on unambiguous phrases. Falls back to 'direct' on any
-    parse failure."""
+    parse failure.
+
+    If `memory` is given AND the transcript looks anaphoric, the most recent
+    2 entries are included as context for the Haiku router. Otherwise no
+    history is loaded — keeps the cache hit and the per-call cost minimal.
+    """
     fast = try_fastpath(transcript)
     if fast is not None:
         log.info("Fast-path: %s | %s", fast.skill, fast.task)
         return fast
 
     valid = set(skill_ids())
+    user_block = transcript.strip()
+    if memory is not None and needs_history(transcript):
+        snippet = memory.recent_snippet(n=2)
+        if snippet:
+            user_block = (
+                "Recent context:\n"
+                f"{snippet}\n"
+                "---\n"
+                f"Current utterance: {transcript.strip()}"
+            )
+            log.info("Router using memory (%d chars)", len(snippet))
+
     raw = haiku(
         system=_system_prompt(),
-        user=transcript.strip(),
+        user=user_block,
         max_tokens=120,
         cache=True,
     )

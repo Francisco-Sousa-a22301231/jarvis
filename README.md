@@ -208,12 +208,74 @@ phrases — "morning brief", "what's on my calendar", "any new emails", "run
 QA", "hello" — skip the LLM call entirely, saving ~2s of latency per match.
 Anything ambiguous still falls through to the Haiku router.
 
-## Phase 4 preview
+## Phase 4 — Memory, confirmation, Gmail, auto-spec
 
-- Memory across utterances (markdown files, loaded on demand)
-- Gmail OAuth fallback for users not on Apple Mail
-- Confirmation gate for any "send" / "push" / destructive action
-- Auto-write QA spec from Claude Code via a stop-hook
+### Memory (anaphora resolution)
+
+Jarvis keeps the last 10 (transcript, skill, result) tuples in
+`~/.jarvis/memory/recent.md`. The router **only loads it** when the new
+transcript looks anaphoric — contains *it / that / those / same / again*.
+Most utterances pay zero memory tokens; the rest get ~80 extra tokens for a
+much better resolution of "do the same for the dashboard" etc.
+
+### Confirmation gate
+
+Skills marked `requires_confirm=True` in `skills.py` go through a voice
+confirmation step before dispatch. Currently: `trello_create`.
+
+```
+You:    "Add a card to call Pedro tomorrow"
+Jarvis: "I'll add to Trello: call Pedro tomorrow. Confirm?"
+You:    "yes" / "go" / "do it" / "ok"  →  executes
+You:    silence / "no" / "cancel"      →  cancels
+```
+
+Add new gated skills by flipping the flag and a phrase in `confirmation.proposal_for()`.
+
+### Gmail OAuth (alternative mail backend)
+
+For non-Mail.app users. One-time setup:
+
+1. https://console.cloud.google.com/ → new (or existing) project.
+2. Enable the **Gmail API**.
+3. APIs & Services → Credentials → Create OAuth client ID → **Desktop app**.
+4. Download the JSON → save as `~/.jarvis/gmail-credentials.json`.
+5. Install the extra deps: `pip install -e ".[gmail]"`.
+6. In `~/.jarvis/config.toml`:
+   ```toml
+   [mail]
+   backend = "gmail"
+   gmail_credentials = "~/.jarvis/gmail-credentials.json"
+   gmail_token = "~/.jarvis/gmail-token.json"
+   ```
+7. First call (e.g. `python -m jarvis brief`) pops a browser for consent.
+   Token is cached for subsequent runs.
+
+Scope is **read-only**. Sending mail intentionally isn't in this agent yet —
+that's a destructive action and would need its own confirmation-gated skill.
+
+### Auto-generated QA spec (closes the Phase 3 loop)
+
+`python -m jarvis spec` reads the project's uncommitted `git diff` and asks
+Claude (Sonnet by default) to write a `.jarvis-qa-spec.md`. Then `python -m
+jarvis qa` runs it.
+
+Wire it to a Claude Code Stop hook so the spec generates automatically after
+every Claude Code session in a project:
+
+```bash
+mkdir -p <your-project>/.claude
+cp hooks/claude-code-stop-hook.example.json <your-project>/.claude/settings.json
+```
+
+The spec generator skips on read-only sessions / tiny diffs (< 8 lines), so
+it's safe to leave the hook always-on.
+
+## Phase 5 preview
+
+- Send-mail skill (Gmail + confirmation gate)
+- A "watcher" that surfaces important new mail / Trello / calendar changes proactively
+- Multi-project routing (Phase 2 placeholder finally resolved)
 
 ## Costs (rough, personal-use)
 

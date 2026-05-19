@@ -1,0 +1,17 @@
+{
+  "_comment": "Drop this into your project's .claude/settings.json (or merge with existing hooks). Each time Claude Code finishes a session in this project, it'll try to generate a .jarvis-qa-spec.md from the uncommitted diff. The spec generator skips itself when the diff is too small or there's nothing to commit, so it's safe on read-only sessions too.",
+
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jarvis spec || true"
+          }
+        ]
+      }
+    ]
+  }
+}

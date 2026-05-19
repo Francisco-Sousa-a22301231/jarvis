@@ -10,13 +10,17 @@ Net cost: ~1 Haiku call instead of 4 (one per agent + final). ~$0.001 per brief.
 from __future__ import annotations
 
 import logging
+from typing import Protocol
 
 from ..llm import haiku
 from .calendar import CalendarAgent
-from .mail import MailAgent
 from .trello import TrelloAgent
 
 log = logging.getLogger(__name__)
+
+
+class _RawUnreadProvider(Protocol):
+    def raw_unread(self) -> str: ...
 
 
 class BriefAgent:
@@ -24,7 +28,7 @@ class BriefAgent:
         self,
         trello: TrelloAgent | None,
         calendar: CalendarAgent | None,
-        mail: MailAgent | None,
+        mail: _RawUnreadProvider | None,  # MailAgent or GmailAgent
     ):
         self.trello = trello
         self.calendar = calendar
