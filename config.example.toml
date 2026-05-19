@@ -48,11 +48,11 @@ max_utterance_seconds = 30.0
 
 # ─── Phase 2 ──────────────────────────────────────────────────────────────
 # Phase 2 adds a Haiku router + Trello / Calendar / Mail / Brief agents.
-# These read credentials from environment variables (NOT this file), so the
-# config stays free of secrets.
+# These read credentials from environment variables (NOT this file).
 #
-# Required for the router:
-#   ANTHROPIC_API_KEY=sk-ant-...
+# LLM calls go through the `claude` CLI (your Claude Max subscription) —
+# NO Anthropic API key is needed. Make sure `claude` is installed and
+# you're logged in via `claude login`.
 #
 # Optional, for the Trello agent (auto-disables if absent):
 #   TRELLO_KEY=...
