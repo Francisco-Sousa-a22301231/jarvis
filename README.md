@@ -153,12 +153,67 @@ that hit router + agent + summarizer, perceived latency is ~3–5s. A keyword
 fast-path that skips the router for unambiguous phrases ("morning brief",
 "trello", "calendar") is on the Phase 3 list.
 
-## Phase 3 preview
+## Phase 3 — QA tester + fast-path
 
-- QA tester agent (Haiku + Playwright MCP against staging/localhost — no code in context)
+### QA tester agent
+
+Built-in skill: `qa`. The agent reads `<project>/.jarvis-qa-spec.md`, spawns
+Haiku via `claude -p`, and drives a real browser through the Playwright MCP
+server. **It cannot read your source code** — built-in Read/Write/Bash/Glob
+tools are explicitly disallowed; only `mcp__playwright__*` is enabled.
+
+#### Workflow
+
+1. Tell Claude Code (manually, or via a project-specific prompt): *"Write a
+   QA spec to `.jarvis-qa-spec.md` before stopping. Include URL + numbered
+   steps + expected results. No code, just behavior."*
+2. Once Claude Code finishes, say *"Jarvis, run QA"* (or `python -m jarvis qa`).
+3. The agent reports `PASS — <summary>` or `FAIL — <step>`. PASS deletes the
+   spec; FAIL keeps it so you can iterate.
+
+Example `.jarvis-qa-spec.md`:
+```markdown
+URL: http://localhost:8000/settings
+Steps:
+1. Click "Dark mode" toggle in the sidebar.
+2. Verify the body element has class `dark-mode`.
+3. Reload the page; verify class is still applied.
+Failure modes:
+- Toggle doesn't animate
+- Persistence broken after reload
+```
+
+#### Setup (one-time)
+
+```bash
+# 1. Install Node.js (needed for the Playwright MCP server)
+brew install node
+
+# 2. Copy the MCP config to where Jarvis looks for it
+cp mcp_config.example.json ~/.jarvis/mcp.json
+
+# 3. Pre-pull the Playwright MCP server (avoids first-run lag)
+npx -y @playwright/mcp@latest --help >/dev/null
+```
+
+#### Cost & latency
+
+Single run is typically <10k Haiku tokens (~$0.01 on pay-as-you-go pricing, or
+free on Max). End-to-end QA against `localhost` finishes in 20–60 seconds.
+
+### Keyword fast-path
+
+The router now tries a local regex fast-path before spawning Haiku. Common
+phrases — "morning brief", "what's on my calendar", "any new emails", "run
+QA", "hello" — skip the LLM call entirely, saving ~2s of latency per match.
+Anything ambiguous still falls through to the Haiku router.
+
+## Phase 4 preview
+
 - Memory across utterances (markdown files, loaded on demand)
 - Gmail OAuth fallback for users not on Apple Mail
 - Confirmation gate for any "send" / "push" / destructive action
+- Auto-write QA spec from Claude Code via a stop-hook
 
 ## Costs (rough, personal-use)
 

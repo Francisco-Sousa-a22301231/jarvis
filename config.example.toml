@@ -61,3 +61,12 @@ max_utterance_seconds = 30.0
 #
 # Calendar + Mail agents are macOS-only (AppleScript). Grant Automation
 # permission to Calendar / Mail when prompted on first use.
+
+# ─── Phase 3 ──────────────────────────────────────────────────────────────
+# QA tester agent. Reads <default_project>/.jarvis-qa-spec.md and drives a
+# browser via the Playwright MCP server.
+
+[qa]
+# Path to an MCP config that registers a Playwright server. See
+# mcp_config.example.json in the repo for the format.
+mcp_config = "~/.jarvis/mcp.json"
