@@ -14,6 +14,7 @@ import sys
 from .cli import (
     cmd_brief,
     cmd_daemon,
+    cmd_listen,
     cmd_prompts,
     cmd_qa,
     cmd_route,
@@ -28,7 +29,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="jarvis")
     sub = parser.add_subparsers(dest="cmd")
 
-    sub.add_parser("daemon", help="Run the voice daemon (default)")
+    sub.add_parser("daemon", help="Run the voice daemon (default; needs Picovoice key)")
+    listen_p = sub.add_parser(
+        "listen",
+        help="Push-to-talk: press Enter, speak, get a response (no wake word needed)",
+    )
+    listen_p.add_argument(
+        "--loop", action="store_true",
+        help="Keep listening after each turn instead of exiting",
+    )
     sub.add_parser("brief", help="Compose and print today's brief")
     sub.add_parser("qa", help="Run the QA agent on the pending spec")
     sub.add_parser("spec", help="Generate a QA spec from the project's uncommitted diff")
@@ -76,6 +85,8 @@ def main() -> int:
 
     if cmd == "daemon":
         return cmd_daemon(config)
+    if cmd == "listen":
+        return cmd_listen(config, loop_mode=bool(getattr(args, "loop", False)))
     if cmd == "brief":
         return cmd_brief(config)
     if cmd == "qa":
