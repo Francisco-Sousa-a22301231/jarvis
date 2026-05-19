@@ -133,8 +133,8 @@ def cmd_prompts(config: Config, action: str, args) -> int:
         for skill in sorted({t.skill for t in registry.templates_for("code", active_only=False) + []} | {"code"}):
             print(f"[skill: {skill}]")
             for t in registry.templates_for(skill, active_only=False):
-                flag = "✓" if t.active else "·"
-                print(f"  {flag} {t.id}  (parent={t.parent_id or '—'})")
+                flag = "[on] " if t.active else "[off]"
+                print(f"  {flag} {t.id}  (parent={t.parent_id or '-'})")
                 first_line = t.template.splitlines()[0][:80] if t.template else ""
                 print(f"      {first_line}")
         return 0
@@ -174,7 +174,7 @@ def cmd_prompts(config: Config, action: str, args) -> int:
         if not ok:
             print(f"Unknown template: {args.template_id}")
             return 1
-        print(f"{args.template_id} → active={new_state}")
+        print(f"{args.template_id} -> active={new_state}")
         return 0
 
     print(f"Unknown prompts action: {action}")
