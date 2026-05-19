@@ -8,6 +8,7 @@ Phase 5 additions:
 from __future__ import annotations
 
 import logging
+import time
 
 from .agents import planner
 from .agents.brief import BriefAgent
@@ -163,13 +164,23 @@ def run(config: Config) -> None:
     registry = PromptRegistry()
     dispatcher, coder_shim = _build_dispatcher(config, memory, registry)
 
-    mouth.speak("Jarvis online.")
+    # Convenience wrapper: every TTS playback is followed by a brief settle
+    # delay (so the mic doesn't pick up our own speaker tail) and a wake-word
+    # buffer reset (so Jarvis saying its own name doesn't self-trigger).
+    POST_SPEAK_SETTLE_S = 0.4
+
+    def say(text: str) -> None:
+        mouth.speak(text)
+        time.sleep(POST_SPEAK_SETTLE_S)
+        ears.wake.reset() if ears.wake is not None else None
+
+    say("Jarvis online.")
     log.info("Waiting for wake word ('jarvis')...")
 
     try:
         while True:
             ears.wait_for_wake()
-            mouth.speak("Yes?")
+            say("Yes?")
 
             audio = ears.record_utterance(
                 max_seconds=config.max_utterance_seconds,
@@ -179,10 +190,10 @@ def run(config: Config) -> None:
             log.info("Transcript: %r", transcript)
 
             if len(transcript) < 3:
-                mouth.speak("Didn't catch that.")
+                say("Didn't catch that.")
                 continue
             if any(tok in transcript.lower() for tok in CANCEL_TOKENS):
-                mouth.speak("Cancelled.")
+                say("Cancelled.")
                 continue
 
             # Extract project mention (e.g. "in MyLessons add..."). If found,
@@ -199,7 +210,7 @@ def run(config: Config) -> None:
             if decision.skill == "code":
                 question = planner.clarification(decision.task)
                 if question:
-                    mouth.speak(question)
+                    say(question)
                     answer_audio = ears.record_utterance(max_seconds=15.0, silence_seconds=1.2)
                     answer = ears.transcribe(answer_audio)
                     log.info("Clarification answer: %r", answer)
@@ -220,21 +231,21 @@ def run(config: Config) -> None:
                         proposal = proposal_for(decision.skill, decision.task)
                 else:
                     proposal = proposal_for(decision.skill, decision.task)
-                mouth.speak(f"{proposal} Confirm?")
+                say(f"{proposal} Confirm?")
                 confirm_audio = ears.record_utterance(max_seconds=8.0, silence_seconds=1.5)
                 confirm_text = ears.transcribe(confirm_audio)
                 log.info("Confirmation transcript: %r", confirm_text)
                 if not is_yes(confirm_text):
-                    mouth.speak("Cancelled.")
+                    say("Cancelled.")
                     memory.append(transcript, decision.skill, "cancelled by user")
                     continue
 
             # Acknowledge before potentially slow ops (Claude Code mostly).
             if decision.skill == "code":
-                mouth.speak("On it.")
+                say("On it.")
 
             response = dispatcher.execute(decision)
-            mouth.speak(response)
+            say(response)
             memory.append(transcript, decision.skill, response)
 
             # Outcome wiring: if QA just ran and there's a pending code dispatch,
