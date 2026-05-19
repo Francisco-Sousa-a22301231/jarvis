@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 
 from .agents.brief import BriefAgent
-from .agents.calendar import CalendarAgent
+from .agents.calendar import build_calendar_agent
 from .agents.direct import DirectAgent
 from .agents.mail import build_mail_agent  # selects applescript or gmail
 from .agents.mail_send import MailSendAgent
@@ -55,7 +55,7 @@ def _build_dispatcher(config: Config, memory: Memory) -> tuple[Dispatcher, "_Cod
         log.warning("Trello disabled: %s", e)
         trello = None
 
-    calendar = CalendarAgent()
+    calendar = build_calendar_agent(config)
     mail = build_mail_agent(config)
     direct = DirectAgent()
     brief = BriefAgent(trello=trello, calendar=calendar, mail=mail)
@@ -65,8 +65,8 @@ def _build_dispatcher(config: Config, memory: Memory) -> tuple[Dispatcher, "_Cod
         claude_bin=config.claude_bin,
     )
     mail_send = MailSendAgent(
-        gmail_credentials_path=config.gmail_credentials_path,
-        gmail_token_path=config.gmail_token_path,
+        gmail_credentials_path=config.google_credentials_path,
+        gmail_token_path=config.google_token_path,
         contacts_path=config.contacts_path,
     )
     memory_query = MemoryQueryAgent(memory=memory)

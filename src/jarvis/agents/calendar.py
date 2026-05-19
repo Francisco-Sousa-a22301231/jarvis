@@ -1,16 +1,24 @@
-"""Calendar agent: read today's events from macOS Calendar via AppleScript.
+"""Calendar agent — two backends:
 
-macOS-only. On first run, macOS asks for Automation permission for Calendar
-(System Settings → Privacy & Security → Automation). The grant attaches to
-the python binary that runs Jarvis.
+  - "applescript": macOS Calendar.app via osascript. Zero auth setup, but
+    macOS-only and requires Automation permission.
+  - "google": Google Calendar API. Cross-platform (works on Windows). Uses
+    the shared Google OAuth helper.
+
+`build_calendar_agent(config)` at the bottom returns whichever the user's
+config asks for. Default is "google" — it works everywhere.
 """
 from __future__ import annotations
 
 import logging
 import platform
 import subprocess
+from typing import TYPE_CHECKING
 
 from ..llm import haiku
+
+if TYPE_CHECKING:
+    from ..config import Config
 
 log = logging.getLogger(__name__)
 
@@ -94,3 +102,21 @@ class CalendarAgent:
             return proc.stdout.strip()
         except Exception:
             return ""
+
+
+def build_calendar_agent(config: "Config"):
+    """Return whichever calendar agent matches config.calendar_backend.
+
+    Default is "google" since it works on Windows and Mac alike, and most
+    people use Google Calendar regardless of OS.
+    """
+    backend = config.calendar_backend
+    if backend == "applescript":
+        return CalendarAgent()
+    # Default + explicit "google"
+    from .gcalendar import GoogleCalendarAgent
+
+    return GoogleCalendarAgent(
+        credentials_path=config.google_credentials_path,
+        token_path=config.google_token_path,
+    )

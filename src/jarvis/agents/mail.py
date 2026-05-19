@@ -113,8 +113,8 @@ def build_mail_agent(config: "Config"):
         from .gmail import GmailAgent
 
         return GmailAgent(
-            credentials_path=config.gmail_credentials_path,
-            token_path=config.gmail_token_path,
+            credentials_path=config.google_credentials_path,
+            token_path=config.google_token_path,
         )
     # Default: macOS Mail.app via AppleScript.
     return MailAgent()

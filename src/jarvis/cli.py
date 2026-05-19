@@ -9,7 +9,7 @@ import logging
 import sys
 
 from .agents.brief import BriefAgent
-from .agents.calendar import CalendarAgent
+from .agents.calendar import build_calendar_agent
 from .agents.mail import build_mail_agent
 from .agents.qa import QAAgent
 from .agents.trello import TrelloAgent
@@ -27,7 +27,7 @@ def _build_brief_agent(config: Config) -> BriefAgent:
         trello = None
     return BriefAgent(
         trello=trello,
-        calendar=CalendarAgent(),
+        calendar=build_calendar_agent(config),
         mail=build_mail_agent(config),
     )
 
@@ -94,9 +94,10 @@ def cmd_watch(config: Config) -> int:
     from .watcher import run_all
 
     run = run_all(
-        gmail_credentials_path=config.gmail_credentials_path,
-        gmail_token_path=config.gmail_token_path,
+        google_credentials_path=config.google_credentials_path,
+        google_token_path=config.google_token_path,
         vip_senders=config.watcher_vip_senders,
+        calendar_backend=config.calendar_backend,
         calendar_lead_minutes=config.watcher_calendar_lead_minutes,
         trello_watch_list=config.watcher_trello_list,
     )

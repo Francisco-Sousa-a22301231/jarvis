@@ -16,7 +16,10 @@ device = "cpu"
 compute_type = "int8"
 
 [elevenlabs]
-# Optional. If unset, falls back to macOS `say` (free, OK quality).
+# Optional. If unset:
+#   - macOS  → falls back to `say` (built-in)
+#   - Windows → falls back to PowerShell SAPI (built-in)
+#   - Linux  → prints to stdout
 # Key: https://elevenlabs.io/app/settings/api-keys
 # api_key = "YOUR_ELEVENLABS_KEY"
 # voice_id = "EXAVITQu4vr4xnSDxMaL"  # Bella
@@ -71,19 +74,29 @@ max_utterance_seconds = 30.0
 # mcp_config.example.json in the repo for the format.
 mcp_config = "~/.jarvis/mcp.json"
 
-# ─── Phase 4 ──────────────────────────────────────────────────────────────
-# Mail backend selector. The router skill `mail` routes to whichever this
-# picks.
-#   - "applescript" (default): macOS Mail.app via osascript. Zero setup,
-#     macOS-only, requires Mail.app to be running and granted Automation
-#     permission on first use.
-#   - "gmail": Google Gmail API via OAuth. Cross-platform but one-time setup.
-#     See README → Phase 4 Gmail setup.
+# ─── Cross-platform Google setup (shared by Gmail + Calendar) ────────────
+# One OAuth client covers everything. Save credentials JSON from Google
+# Cloud Console as ~/.jarvis/google-credentials.json (or set the path below).
+# Token is auto-cached on first call.
+[google]
+# credentials = "~/.jarvis/google-credentials.json"
+# token       = "~/.jarvis/google-token.json"
+
+# ─── Mail backend ─────────────────────────────────────────────────────────
+# Skill `mail` routes here.
+#   - "applescript": macOS Mail.app via osascript. Mac-only, zero setup.
+#   - "gmail":       Google Gmail API. Cross-platform (Windows + Mac).
+# Default is platform-aware (applescript on Mac, gmail elsewhere).
 [mail]
-backend = "applescript"
-# gmail_credentials = "~/.jarvis/gmail-credentials.json"
-# gmail_token = "~/.jarvis/gmail-token.json"
+# backend = "gmail"
 # contacts = "~/.jarvis/contacts.toml"   # for the mail_send skill
+
+# ─── Calendar backend ─────────────────────────────────────────────────────
+# Skill `calendar` routes here.
+#   - "google" (default): Google Calendar API. Cross-platform.
+#   - "applescript":       macOS Calendar.app via osascript.
+[calendar]
+backend = "google"
 
 # Memory and confirmation gate are wired in automatically — no config needed.
 # Memory lives at ~/.jarvis/memory/recent.md (last 10 utterances).

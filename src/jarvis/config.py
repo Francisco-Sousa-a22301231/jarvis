@@ -2,12 +2,18 @@
 from __future__ import annotations
 
 import os
+import platform
 import sys
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .projects import Project
+
+
+def _default_mail_backend() -> str:
+    """applescript on macOS (zero setup), gmail elsewhere."""
+    return "applescript" if platform.system() == "Darwin" else "gmail"
 
 
 @dataclass(frozen=True)
@@ -27,9 +33,10 @@ class Config:
     dangerously_skip_permissions: bool
     timeout_seconds: int
     mcp_config_path: Path
-    mail_backend: str  # "applescript" (default, macOS Mail) or "gmail" (OAuth)
-    gmail_credentials_path: Path
-    gmail_token_path: Path
+    mail_backend: str  # "applescript" (macOS Mail) or "gmail" (cross-platform)
+    calendar_backend: str  # "google" (default, cross-platform) or "applescript"
+    google_credentials_path: Path
+    google_token_path: Path
     contacts_path: Path
     watcher_vip_senders: tuple[str, ...]
     watcher_calendar_lead_minutes: int
@@ -102,14 +109,19 @@ class Config:
             mcp_config_path=Path(
                 data.get("qa", {}).get("mcp_config", "~/.jarvis/mcp.json")
             ).expanduser(),
-            mail_backend=data.get("mail", {}).get("backend", "applescript"),
-            gmail_credentials_path=Path(
-                data.get("mail", {}).get(
-                    "gmail_credentials", "~/.jarvis/gmail-credentials.json"
+            mail_backend=data.get("mail", {}).get("backend", _default_mail_backend()),
+            calendar_backend=data.get("calendar", {}).get("backend", "google"),
+            google_credentials_path=Path(
+                # Prefer [google].credentials; fall back to legacy
+                # [mail].gmail_credentials for existing configs.
+                data.get("google", {}).get("credentials")
+                or data.get("mail", {}).get(
+                    "gmail_credentials", "~/.jarvis/google-credentials.json"
                 )
             ).expanduser(),
-            gmail_token_path=Path(
-                data.get("mail", {}).get("gmail_token", "~/.jarvis/gmail-token.json")
+            google_token_path=Path(
+                data.get("google", {}).get("token")
+                or data.get("mail", {}).get("gmail_token", "~/.jarvis/google-token.json")
             ).expanduser(),
             contacts_path=Path(
                 data.get("mail", {}).get("contacts", "~/.jarvis/contacts.toml")
