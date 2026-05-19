@@ -11,7 +11,7 @@ import argparse
 import logging
 import sys
 
-from .cli import cmd_brief, cmd_daemon, cmd_qa, cmd_route
+from .cli import cmd_brief, cmd_daemon, cmd_qa, cmd_route, cmd_spec
 from .config import Config
 
 
@@ -22,6 +22,7 @@ def main() -> int:
     sub.add_parser("daemon", help="Run the voice daemon (default)")
     sub.add_parser("brief", help="Compose and print today's brief")
     sub.add_parser("qa", help="Run the QA agent on the pending spec")
+    sub.add_parser("spec", help="Generate a QA spec from the project's uncommitted diff")
 
     route_p = sub.add_parser("route", help="Debug: route a piece of text")
     route_p.add_argument("text", help="Text to classify")
@@ -46,6 +47,8 @@ def main() -> int:
         return cmd_brief(config)
     if cmd == "qa":
         return cmd_qa(config)
+    if cmd == "spec":
+        return cmd_spec(config)
     if cmd == "route":
         return cmd_route(config, args.text)
 

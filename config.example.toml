@@ -70,3 +70,21 @@ max_utterance_seconds = 30.0
 # Path to an MCP config that registers a Playwright server. See
 # mcp_config.example.json in the repo for the format.
 mcp_config = "~/.jarvis/mcp.json"
+
+# ─── Phase 4 ──────────────────────────────────────────────────────────────
+# Mail backend selector. The router skill `mail` routes to whichever this
+# picks.
+#   - "applescript" (default): macOS Mail.app via osascript. Zero setup,
+#     macOS-only, requires Mail.app to be running and granted Automation
+#     permission on first use.
+#   - "gmail": Google Gmail API via OAuth. Cross-platform but one-time setup.
+#     See README → Phase 4 Gmail setup.
+[mail]
+backend = "applescript"
+# gmail_credentials = "~/.jarvis/gmail-credentials.json"
+# gmail_token = "~/.jarvis/gmail-token.json"
+
+# Memory and confirmation gate are wired in automatically — no config needed.
+# Memory lives at ~/.jarvis/memory/recent.md (last 10 utterances).
+# Confirmation is required for skills with requires_confirm=True in
+# src/jarvis/skills.py (currently: trello_create).

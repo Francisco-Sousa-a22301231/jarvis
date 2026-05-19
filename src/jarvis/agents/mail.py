@@ -1,18 +1,26 @@
-"""Mail agent: read unread inbox from macOS Mail.app via AppleScript.
+"""Mail agent: read unread inbox.
 
-macOS-only, and assumes you use Apple Mail (not just gmail.com in the browser).
-First run needs Automation permission for Mail.
+Two backends, selected via config's `mail.backend`:
 
-If you don't use Mail.app, the Phase 3 plan is to add a Gmail OAuth client
-under the same Agent interface. For now, this falls back gracefully.
+  - "applescript" (default): reads macOS Mail.app via osascript. Zero auth
+    setup but only works on macOS with Mail.app actually running.
+  - "gmail":  uses the Gmail OAuth agent in agents/gmail.py. Cross-platform
+    but requires a one-time OAuth setup (see Phase 4 README section).
+
+The `build_mail_agent(config)` factory at the bottom returns whichever the
+config asks for.
 """
 from __future__ import annotations
 
 import logging
 import platform
 import subprocess
+from typing import TYPE_CHECKING
 
 from ..llm import haiku
+
+if TYPE_CHECKING:
+    from ..config import Config
 
 log = logging.getLogger(__name__)
 
@@ -96,3 +104,17 @@ class MailAgent:
             return proc.stdout.strip()
         except Exception:
             return ""
+
+
+def build_mail_agent(config: "Config"):
+    """Return whichever mail agent matches config.mail_backend."""
+    backend = config.mail_backend
+    if backend == "gmail":
+        from .gmail import GmailAgent
+
+        return GmailAgent(
+            credentials_path=config.gmail_credentials_path,
+            token_path=config.gmail_token_path,
+        )
+    # Default: macOS Mail.app via AppleScript.
+    return MailAgent()

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 class Skill:
     id: str
     description: str  # one-line, used in the router prompt
+    requires_confirm: bool = False  # voice "Confirm?" before dispatch
 
 
 SKILL_CATALOG: tuple[Skill, ...] = (
@@ -26,6 +27,7 @@ SKILL_CATALOG: tuple[Skill, ...] = (
     Skill(
         id="trello_create",
         description="Create a new Trello card. ex: 'add a card to call Pedro tomorrow', 'remind me to fix the bug'",
+        requires_confirm=True,
     ),
     Skill(
         id="calendar",
@@ -56,3 +58,10 @@ def skill_ids() -> list[str]:
 
 def catalog_lines() -> str:
     return "\n".join(f"- {s.id}: {s.description}" for s in SKILL_CATALOG)
+
+
+def requires_confirm(skill_id: str) -> bool:
+    for s in SKILL_CATALOG:
+        if s.id == skill_id:
+            return s.requires_confirm
+    return False

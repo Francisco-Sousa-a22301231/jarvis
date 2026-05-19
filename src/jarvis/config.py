@@ -24,6 +24,9 @@ class Config:
     dangerously_skip_permissions: bool
     timeout_seconds: int
     mcp_config_path: Path
+    mail_backend: str  # "applescript" (default, macOS Mail) or "gmail" (OAuth)
+    gmail_credentials_path: Path
+    gmail_token_path: Path
     vad_aggressiveness: int
     silence_seconds: float
     max_utterance_seconds: float
@@ -68,6 +71,15 @@ class Config:
             timeout_seconds=int(coder.get("timeout_seconds", 600)),
             mcp_config_path=Path(
                 data.get("qa", {}).get("mcp_config", "~/.jarvis/mcp.json")
+            ).expanduser(),
+            mail_backend=data.get("mail", {}).get("backend", "applescript"),
+            gmail_credentials_path=Path(
+                data.get("mail", {}).get(
+                    "gmail_credentials", "~/.jarvis/gmail-credentials.json"
+                )
+            ).expanduser(),
+            gmail_token_path=Path(
+                data.get("mail", {}).get("gmail_token", "~/.jarvis/gmail-token.json")
             ).expanduser(),
             vad_aggressiveness=int(vad.get("aggressiveness", 2)),
             silence_seconds=float(vad.get("silence_seconds", 1.0)),
