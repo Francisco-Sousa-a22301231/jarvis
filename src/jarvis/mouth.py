@@ -1,22 +1,39 @@
 """Text-to-speech with platform-appropriate fallbacks.
 
 Priority order:
-  1. ElevenLabs streaming (highest quality, cloud — if key configured)
-  2. macOS `say`           (Mac, built-in)
-  3. Windows SAPI          (Windows, built-in via PowerShell)
-  4. print(...)            (last resort — never silent)
+  1. edge-tts (Microsoft neural voices, free, sounds basically human)
+  2. ElevenLabs (still highest quality if you have a key)
+  3. macOS `say`
+  4. Windows SAPI
+  5. print(...)
 
-No extra package needed on either OS — SAPI ships with Windows, `say` ships
-with macOS. Add ElevenLabs at any time for the quality upgrade.
+edge-tts is the new recommended path on Windows — SAPI sounds robotic and
+Windows only ships a basic en-US voice (Zira) without manual install.
+edge-tts uses Microsoft Edge's free unofficial cloud TTS — Apache 2.0
+PyPI package, no signup.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 import platform
 import shutil
 import subprocess
+import tempfile
 
 log = logging.getLogger(__name__)
+
+DEFAULT_EDGE_VOICE = "en-US-AriaNeural"
+
+
+def _edge_tts_available() -> bool:
+    try:
+        import edge_tts  # noqa: F401
+        import pygame  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 def _windows_sapi_available() -> bool:
@@ -25,12 +42,44 @@ def _windows_sapi_available() -> bool:
     return shutil.which("powershell.exe") is not None or shutil.which("pwsh.exe") is not None
 
 
+def _speak_edge_tts(text: str, voice: str) -> bool:
+    """Synthesise via edge-tts to a temp MP3, then play with pygame. True on success."""
+    try:
+        import edge_tts
+        import pygame.mixer
+    except ImportError:
+        return False
+
+    async def _save(path: str) -> None:
+        comm = edge_tts.Communicate(text, voice)
+        await comm.save(path)
+
+    f = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    f.close()
+    try:
+        asyncio.run(_save(f.name))
+        if not pygame.mixer.get_init():
+            pygame.mixer.init()
+        snd = pygame.mixer.Sound(f.name)
+        ch = snd.play()
+        while ch.get_busy():
+            pygame.time.delay(40)
+        return True
+    except Exception:
+        log.exception("edge-tts playback failed")
+        return False
+    finally:
+        try:
+            os.unlink(f.name)
+        except OSError:
+            pass
+
+
 def _speak_windows_sapi(text: str) -> bool:
     """TTS via PowerShell's System.Speech.Synthesis. Returns True on success."""
     powershell = shutil.which("pwsh.exe") or shutil.which("powershell.exe")
     if powershell is None:
         return False
-    # Escape single quotes for PowerShell single-quoted string literal.
     escaped = text.replace("'", "''")
     script = (
         "Add-Type -AssemblyName System.Speech;"
@@ -55,12 +104,15 @@ class Mouth:
         elevenlabs_key: str | None = None,
         voice_id: str = "EXAVITQu4vr4xnSDxMaL",
         model: str = "eleven_turbo_v2_5",
+        edge_voice: str = DEFAULT_EDGE_VOICE,
     ):
         self.voice_id = voice_id
         self.model = model
+        self.edge_voice = edge_voice
         self._client = None
         self._have_say = shutil.which("say") is not None
         self._have_sapi = _windows_sapi_available()
+        self._have_edge = _edge_tts_available()
 
         if elevenlabs_key:
             try:
@@ -70,13 +122,19 @@ class Mouth:
             except ImportError:
                 log.warning("elevenlabs package not installed; falling back")
 
-        if self._client is None:
-            if self._have_say:
-                log.info("Using macOS `say` for TTS")
-            elif self._have_sapi:
-                log.info("Using Windows SAPI for TTS")
-            else:
-                log.warning("No TTS backend available; will print to stdout")
+        # Log the active backend so the daemon-startup output makes it
+        # obvious which voice the user will hear.
+        if self._client is not None:
+            backend = "ElevenLabs"
+        elif self._have_edge:
+            backend = f"edge-tts ({edge_voice})"
+        elif self._have_say:
+            backend = "macOS say"
+        elif self._have_sapi:
+            backend = "Windows SAPI"
+        else:
+            backend = "print fallback"
+        log.info("TTS backend: %s", backend)
 
     def speak(self, text: str) -> None:
         text = text.strip()
@@ -88,7 +146,9 @@ class Mouth:
                 self._speak_elevenlabs(text)
                 return
             except Exception:
-                log.exception("ElevenLabs failed; trying platform fallback")
+                log.exception("ElevenLabs failed; trying next backend")
+        if self._have_edge and _speak_edge_tts(text, self.edge_voice):
+            return
         if self._have_say:
             subprocess.run(["say", text], check=False)
             return

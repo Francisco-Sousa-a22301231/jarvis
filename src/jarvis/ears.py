@@ -33,6 +33,9 @@ class WakeBackend(Protocol):
     def process(self, pcm_int16) -> bool:
         """True iff the wake word was detected in this frame."""
 
+    def reset(self) -> None:
+        """Clear any buffered audio so a new wake cycle starts clean."""
+
     def close(self) -> None: ...
 
 
@@ -43,6 +46,9 @@ class PorcupineBackend:
 
     def process(self, pcm_int16) -> bool:
         return self._p.process(pcm_int16) >= 0
+
+    def reset(self) -> None:
+        pass  # Porcupine has no persistent buffer to clear
 
     def close(self) -> None:
         self._p.delete()
@@ -81,6 +87,19 @@ class OpenWakeWordBackend:
             log.debug("wake score=%.3f", score)
             return True
         return False
+
+    def reset(self) -> None:
+        """Clear the model's internal audio history.
+
+        Without this, after a wake-word detection (or after TTS playback that
+        the mic re-heard), the model's buffer still contains audio matching
+        the wake word and immediately triggers again on the next process()
+        call — the classic feedback loop.
+        """
+        try:
+            self._m.reset()
+        except Exception:
+            log.exception("openWakeWord reset failed (non-fatal)")
 
     def close(self) -> None:
         pass  # nothing to free
@@ -155,6 +174,9 @@ class Ears:
                 pcm = struct.unpack_from("h" * frame_len, bytes(data))
                 if self.wake.process(pcm):
                     log.info("Wake word detected")
+                    # Clear the model's buffer so the same wake event
+                    # doesn't re-trigger on the next call.
+                    self.wake.reset()
                     return
 
     def record_utterance(

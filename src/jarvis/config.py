@@ -105,7 +105,7 @@ class Config:
         return cls(
             picovoice_key=picovoice_key,
             wake_word_backend=wake_word_backend,
-            openwakeword_threshold=float(ww.get("openwakeword_threshold", 0.5)),
+            openwakeword_threshold=float(ww.get("openwakeword_threshold", 0.6)),
             elevenlabs_key=elevenlabs_key,
             elevenlabs_voice_id=eleven.get("voice_id", "EXAVITQu4vr4xnSDxMaL"),
             elevenlabs_model=eleven.get("model", "eleven_turbo_v2_5"),
