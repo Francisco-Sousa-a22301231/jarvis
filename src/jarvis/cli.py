@@ -84,3 +84,19 @@ def cmd_spec(config: Config) -> int:
     )
     print(result.message)
     return 0 if result.success else 1
+
+
+def cmd_watch(config: Config) -> int:
+    """One-shot scan for VIP mail. Posts macOS notifications. Suitable for launchd."""
+    from .watcher import watch_mail
+
+    result = watch_mail(
+        gmail_credentials_path=config.gmail_credentials_path,
+        gmail_token_path=config.gmail_token_path,
+        vip_senders=config.watcher_vip_senders,
+    )
+    if result.skipped_reason:
+        print(f"Skipped: {result.skipped_reason}")
+        return 1
+    print(f"Checked {result.checked} message(s); notified for {result.notified}.")
+    return 0

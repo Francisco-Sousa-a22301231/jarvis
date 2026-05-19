@@ -83,8 +83,34 @@ mcp_config = "~/.jarvis/mcp.json"
 backend = "applescript"
 # gmail_credentials = "~/.jarvis/gmail-credentials.json"
 # gmail_token = "~/.jarvis/gmail-token.json"
+# contacts = "~/.jarvis/contacts.toml"   # for the mail_send skill
 
 # Memory and confirmation gate are wired in automatically — no config needed.
 # Memory lives at ~/.jarvis/memory/recent.md (last 10 utterances).
 # Confirmation is required for skills with requires_confirm=True in
-# src/jarvis/skills.py (currently: trello_create).
+# src/jarvis/skills.py (currently: trello_create, mail_send).
+
+# ─── Phase 5 ──────────────────────────────────────────────────────────────
+# Multi-project routing. Voice utterances like "in mylessons add a dark
+# mode toggle" route the coder skill to the named project. The first
+# project here is the default when no project is named.
+#
+# If you omit this array, Jarvis falls back to a single project built
+# from `coder.default_project` — existing configs keep working.
+#
+# [[projects]]
+# name = "mylessons"
+# path = "~/StudioProjects/MyLessons-Project"
+# aliases = ["my lessons", "lessons"]
+#
+# [[projects]]
+# name = "jarvis"
+# path = "~/StudioProjects/jarvis"
+# aliases = []
+
+# Proactive watcher. Polled by launchd (see com.francisco.jarvis-watcher.plist).
+# Posts a macOS notification when an unread message arrives from someone
+# in the VIP list. Requires [mail].backend = "gmail".
+[watcher]
+vip_senders = []
+# vip_senders = ["boss@company.com", "important@client.com"]
