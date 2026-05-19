@@ -22,7 +22,7 @@ from .coder import Coder
 from .config import Config
 from .confirmation import is_yes, proposal_for
 from .dispatcher import Dispatcher
-from .ears import Ears
+from .ears import Ears, build_wake_backend
 from .memory import Memory
 from .mouth import Mouth
 from .projects import resolve_project
@@ -136,15 +136,19 @@ class _CoderShim:
 
 
 def run(config: Config) -> None:
-    if not config.picovoice_key:
+    wake_backend = build_wake_backend(
+        backend=config.wake_word_backend,
+        picovoice_key=config.picovoice_key,
+        openwakeword_threshold=config.openwakeword_threshold,
+    )
+    if wake_backend is None:
         raise RuntimeError(
-            "PICOVOICE_KEY not set — daemon needs a Picovoice access key. "
-            "Get one free at https://console.picovoice.ai/ and set it in "
-            "~/.jarvis/config.toml or via PICOVOICE_KEY env. "
-            "(brief/route/qa subcommands work without it.)"
+            "wake_word.backend = 'none' but daemon needs a wake word. "
+            "Set it to 'openwakeword' (default, no key) or 'porcupine', "
+            "or use `jarvis listen` for push-to-talk instead."
         )
     ears = Ears(
-        picovoice_key=config.picovoice_key,
+        wake_backend=wake_backend,
         whisper_model=config.whisper_model,
         whisper_device=config.whisper_device,
         whisper_compute_type=config.whisper_compute_type,

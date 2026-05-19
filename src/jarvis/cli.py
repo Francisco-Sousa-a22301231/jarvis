@@ -142,7 +142,7 @@ def cmd_listen(config: Config, *, loop_mode: bool) -> int:
 
     print("Loading models (Whisper, etc.)...", flush=True)
     ears = Ears(
-        picovoice_key=None,  # explicit: no wake word here
+        wake_backend=None,  # push-to-talk: no wake word
         whisper_model=config.whisper_model,
         whisper_device=config.whisper_device,
         whisper_compute_type=config.whisper_compute_type,
