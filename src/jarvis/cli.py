@@ -120,3 +120,62 @@ def cmd_serve(config: Config) -> int:
     from .server import serve
 
     return serve(config)
+
+
+def cmd_prompts(config: Config, action: str, args) -> int:
+    """Inspect, evolve, and feedback on the prompt registry."""
+    from .prompt_evolution import evolve
+    from .prompt_registry import PromptRegistry
+
+    registry = PromptRegistry()
+
+    if action == "list":
+        for skill in sorted({t.skill for t in registry.templates_for("code", active_only=False) + []} | {"code"}):
+            print(f"[skill: {skill}]")
+            for t in registry.templates_for(skill, active_only=False):
+                flag = "✓" if t.active else "·"
+                print(f"  {flag} {t.id}  (parent={t.parent_id or '—'})")
+                first_line = t.template.splitlines()[0][:80] if t.template else ""
+                print(f"      {first_line}")
+        return 0
+
+    if action == "stats":
+        rows = registry.stats()
+        if not rows:
+            print("No outcomes recorded yet. Run some code dispatches then `jarvis qa` to score them.")
+            return 0
+        print(f"{'template':<25s} {'trials':>7s} {'wins':>6s} {'losses':>7s} {'unknown':>8s} {'win%':>6s}")
+        for s in sorted(rows, key=lambda r: r.template_id):
+            wr = f"{s.win_rate * 100:.0f}%" if (s.successes + s.failures) else "—"
+            print(
+                f"{s.template_id:<25s} {s.trials:>7d} {s.successes:>6d} "
+                f"{s.failures:>7d} {s.unknown:>8d} {wr:>6s}"
+            )
+        return 0
+
+    if action == "evolve":
+        result = evolve(registry, skill="code")
+        print(result.message)
+        return 0 if result.success else 1
+
+    if action == "feedback":
+        template_id = args.template_id
+        outcome = args.outcome
+        if registry.get(template_id) is None:
+            print(f"Unknown template: {template_id}")
+            return 1
+        registry.record_outcome(template_id, args.task or "(manual)", outcome, "manual feedback")
+        print(f"Recorded {outcome} for {template_id}.")
+        return 0
+
+    if action == "activate" or action == "deactivate":
+        new_state = action == "activate"
+        ok = registry.set_active(args.template_id, new_state)
+        if not ok:
+            print(f"Unknown template: {args.template_id}")
+            return 1
+        print(f"{args.template_id} → active={new_state}")
+        return 0
+
+    print(f"Unknown prompts action: {action}")
+    return 1

@@ -1,17 +1,22 @@
 """Spawn Claude Code to execute a coding task.
 
-Phase 1: invokes the `claude` CLI in print mode (`-p`) as a subprocess.
-Future: swap for the Claude Agent SDK for richer streaming.
+The Coder optionally renders its task through a versioned prompt template
+(see prompt_registry.py). The selected template_id is attached to the
+result so the loop can score it later (e.g. when QA passes or fails).
 """
 from __future__ import annotations
 
 import logging
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 log = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from .prompt_registry import PromptRegistry
 
 
 @dataclass
@@ -19,6 +24,8 @@ class CoderResult:
     success: bool
     output: str
     error: str = ""
+    template_id: str | None = None  # which prompt template was used
+    task: str = ""                   # original task (for outcome recording)
 
     @property
     def short(self) -> str:
@@ -45,11 +52,13 @@ class Coder:
         claude_bin: str = "claude",
         dangerously_skip_permissions: bool = False,
         timeout_seconds: int = 600,
+        prompt_registry: "PromptRegistry | None" = None,
     ):
         self.project_root = project_root
         self.claude_bin = claude_bin
         self.dangerously_skip = dangerously_skip_permissions
         self.timeout = timeout_seconds
+        self.prompt_registry = prompt_registry
 
     def check(self) -> None:
         """Verify Claude Code is installed."""
@@ -62,11 +71,23 @@ class Coder:
             raise FileNotFoundError(f"Project root {self.project_root} does not exist")
 
     def execute(self, task: str) -> CoderResult:
-        cmd = [self.claude_bin, "-p", task, "--output-format", "text"]
+        # Render through the prompt registry if available; otherwise pass the
+        # raw task through (Phase 1 / pre-Phase-7 behaviour).
+        template_id: str | None = None
+        rendered = task
+        if self.prompt_registry is not None:
+            template_id, rendered = self.prompt_registry.render("code", task)
+
+        cmd = [self.claude_bin, "-p", rendered, "--output-format", "text"]
         if self.dangerously_skip:
             cmd.append("--dangerously-skip-permissions")
 
-        log.info("Running Claude Code in %s: %s", self.project_root, task[:80])
+        log.info(
+            "Running Claude Code in %s [template=%s]: %s",
+            self.project_root,
+            template_id or "(raw)",
+            task[:80],
+        )
         try:
             proc = subprocess.run(
                 cmd,
@@ -77,10 +98,19 @@ class Coder:
                 check=False,
             )
         except subprocess.TimeoutExpired:
-            return CoderResult(False, "", f"Timed out after {self.timeout}s")
+            return CoderResult(
+                False, "", f"Timed out after {self.timeout}s",
+                template_id=template_id, task=task,
+            )
         except FileNotFoundError as e:
-            return CoderResult(False, "", str(e))
+            return CoderResult(
+                False, "", str(e), template_id=template_id, task=task,
+            )
 
         if proc.returncode != 0:
-            return CoderResult(False, proc.stdout, proc.stderr or f"exit {proc.returncode}")
-        return CoderResult(True, proc.stdout)
+            return CoderResult(
+                False, proc.stdout,
+                proc.stderr or f"exit {proc.returncode}",
+                template_id=template_id, task=task,
+            )
+        return CoderResult(True, proc.stdout, template_id=template_id, task=task)
