@@ -341,12 +341,81 @@ launchctl load ~/Library/LaunchAgents/com.francisco.jarvis-watcher.plist
 Runs every 5 minutes by default; state at `~/.jarvis/watcher-state.json`
 ensures no double-notifications.
 
-## Phase 6 preview
+## Phase 6 — Watcher v2, memory recall, custom skills, HTTP server
 
-- Calendar lead-time + Trello-list-move watchers (extends the framework)
-- A "memory query" skill — "Jarvis, what did I ask you to do this morning?"
-- Hot-reloadable skills directory (drop a .py file in `~/.jarvis/skills/`)
-- iOS Shortcuts integration for phone-as-remote
+### Watcher: calendar + Trello (on top of Phase 5's mail)
+
+```toml
+[watcher]
+vip_senders = ["boss@company.com"]
+calendar_lead_minutes = 15     # 0 disables
+trello_list = "Doing"          # "" disables
+```
+
+`jarvis watch` now runs three checks each tick (mail + calendar + Trello),
+each notifying via macOS and persisting state separately in
+`~/.jarvis/watcher-state.json`. The existing launchd plist
+(`com.francisco.jarvis-watcher.plist`) wakes it every 5 minutes.
+
+### Memory-query skill
+
+New `memory_query` skill. Triggers on phrases like *"what did I ask earlier"*,
+*"what was my last command"*, *"recent history"* — fast-path matched, no
+Haiku call until the agent summarizes the captured snippet.
+
+### Custom skills directory
+
+Drop a `.py` file into `~/.jarvis/skills/`, restart the daemon, and the
+router knows about it. Each file declares:
+
+```python
+ID = "weather"
+DESCRIPTION = "Check weather. ex: 'what's the weather in Cascais'"
+
+def execute(task: str) -> str:
+    ...
+
+REQUIRES_CONFIRM = False  # optional
+```
+
+See [examples/skills/weather.py](examples/skills/weather.py) for a
+working template that uses the free Open-Meteo API. One bad file logs and
+skips — daemon startup is never blocked by user code.
+
+### HTTP server (phone-as-remote / iOS Shortcuts)
+
+```bash
+# Set a strong token first
+export JARVIS_SERVER_TOKEN=$(openssl rand -hex 32)
+python -m jarvis serve
+# → http://127.0.0.1:8765
+
+curl -X POST http://127.0.0.1:8765/command \
+  -H "Authorization: Bearer $JARVIS_SERVER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "what is on my calendar"}'
+# → {"skill":"calendar","task":"Show today's calendar","result":"..."}
+```
+
+**For phone access**:
+1. Set `server.host = "0.0.0.0"` in config.
+2. Install Tailscale on your Mac and phone (do NOT expose to the public internet).
+3. In iOS Shortcuts: build a shortcut that records voice → transcribes →
+   POSTs to `http://<your-tailscale-mac-ip>:8765/command` → speaks the
+   `result` field. (The exact Shortcut config depends on your iOS version;
+   `Get Contents of URL` + `Speak Text` is the gist.)
+4. Run the server as a LaunchAgent:
+   `cp launchd/com.francisco.jarvis-server.plist ~/Library/LaunchAgents/`
+
+Auth: every `POST /command` must include `Authorization: Bearer <token>`.
+`GET /healthz` is unauthenticated for monitoring.
+
+## Phase 7 preview
+
+- Streaming responses over HTTP (so the phone can hear progress on long Claude Code runs)
+- Skill marketplace / shareable skill bundles
+- macOS menu-bar app wrapping the daemon
+- Memory query with date filters ("what did I ask yesterday")
 
 ## Costs (rough, personal-use)
 

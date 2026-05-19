@@ -71,6 +71,15 @@ _PATTERNS: list[tuple[re.Pattern[str], str, str | None]] = [
         "mail",
         "Show unread mail",
     ),
+    # Memory recall
+    (
+        re.compile(
+            r"\bwhat did i (just |earlier )?(ask|say|do)\b|\bwhat was my last (command|request)\b|\b(recent )?history\b|\brecent (commands|requests|interactions)\b",
+            re.I,
+        ),
+        "memory_query",
+        "Summarize recent interactions",
+    ),
     # Smalltalk / status
     (
         re.compile(

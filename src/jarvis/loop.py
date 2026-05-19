@@ -14,6 +14,7 @@ from .agents.calendar import CalendarAgent
 from .agents.direct import DirectAgent
 from .agents.mail import build_mail_agent  # selects applescript or gmail
 from .agents.mail_send import MailSendAgent
+from .agents.memory_query import MemoryQueryAgent
 from .agents.qa import QAAgent
 from .agents.trello import TrelloAgent
 from .coder import Coder
@@ -26,13 +27,14 @@ from .mouth import Mouth
 from .projects import resolve_project
 from .router import route
 from .skills import requires_confirm
+from .skills_loader import load_dir as load_custom_skills
 
 log = logging.getLogger(__name__)
 
 CANCEL_TOKENS = ("cancel that", "never mind", "nevermind", "forget it")
 
 
-def _build_dispatcher(config: Config) -> tuple[Dispatcher, "_CoderShim"]:
+def _build_dispatcher(config: Config, memory: Memory) -> tuple[Dispatcher, "_CoderShim"]:
     # Coder per configured project. The shim picks the right one per dispatch.
     coders: dict[str, Coder] = {}
     for p in config.projects:
@@ -67,6 +69,7 @@ def _build_dispatcher(config: Config) -> tuple[Dispatcher, "_CoderShim"]:
         gmail_token_path=config.gmail_token_path,
         contacts_path=config.contacts_path,
     )
+    memory_query = MemoryQueryAgent(memory=memory)
 
     agents = {
         "code": coder_shim,
@@ -76,10 +79,22 @@ def _build_dispatcher(config: Config) -> tuple[Dispatcher, "_CoderShim"]:
         "direct": direct,
         "brief": brief,
         "qa": qa,
+        "memory_query": memory_query,
     }
     if trello is not None:
         agents["trello_query"] = trello
         agents["trello_create"] = trello
+
+    # Custom skills from ~/.jarvis/skills/*.py (loaded once at startup).
+    # Each registers itself in skills.SKILL_CATALOG and returns an agent.
+    custom = load_custom_skills(config.skills_dir)
+    for skill_id, agent in custom.items():
+        if skill_id in agents:
+            log.warning(
+                "Custom skill %r overrides a built-in. Keeping the custom one.", skill_id
+            )
+        agents[skill_id] = agent
+
     return Dispatcher(agents), coder_shim
 
 
@@ -127,8 +142,8 @@ def run(config: Config) -> None:
         voice_id=config.elevenlabs_voice_id,
         model=config.elevenlabs_model,
     )
-    dispatcher, coder_shim = _build_dispatcher(config)
     memory = Memory()
+    dispatcher, coder_shim = _build_dispatcher(config, memory)
 
     mouth.speak("Jarvis online.")
     log.info("Waiting for wake word ('jarvis')...")

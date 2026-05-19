@@ -87,16 +87,35 @@ def cmd_spec(config: Config) -> int:
 
 
 def cmd_watch(config: Config) -> int:
-    """One-shot scan for VIP mail. Posts macOS notifications. Suitable for launchd."""
-    from .watcher import watch_mail
+    """One-shot scan: VIP mail + imminent calendar + Trello list moves.
 
-    result = watch_mail(
+    Posts macOS notifications. Designed for launchd to run every few minutes.
+    """
+    from .watcher import run_all
+
+    run = run_all(
         gmail_credentials_path=config.gmail_credentials_path,
         gmail_token_path=config.gmail_token_path,
         vip_senders=config.watcher_vip_senders,
+        calendar_lead_minutes=config.watcher_calendar_lead_minutes,
+        trello_watch_list=config.watcher_trello_list,
     )
-    if result.skipped_reason:
-        print(f"Skipped: {result.skipped_reason}")
-        return 1
-    print(f"Checked {result.checked} message(s); notified for {result.notified}.")
+
+    def line(name: str, r) -> str:
+        if r.skipped_reason:
+            return f"  {name:<8s} skipped — {r.skipped_reason}"
+        return f"  {name:<8s} checked={r.checked} notified={r.notified}"
+
+    print("Watcher run:")
+    print(line("mail", run.mail))
+    print(line("calendar", run.calendar))
+    print(line("trello", run.trello))
+    print(f"Total notifications: {run.total_notified}")
     return 0
+
+
+def cmd_serve(config: Config) -> int:
+    """Run the HTTP server for remote commands (phone-as-remote / shortcuts)."""
+    from .server import serve
+
+    return serve(config)
