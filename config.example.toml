@@ -114,3 +114,26 @@ backend = "applescript"
 [watcher]
 vip_senders = []
 # vip_senders = ["boss@company.com", "important@client.com"]
+# Notify for calendar events starting within N minutes. 0 disables.
+calendar_lead_minutes = 0
+# Notify when a card lands in this Trello list (name match, case-insensitive).
+# Empty string disables.
+trello_list = ""
+
+# ─── Phase 6 ──────────────────────────────────────────────────────────────
+# Drop .py files into this directory to register custom skills at startup.
+# Each file must define ID, DESCRIPTION, execute(task: str) -> str.
+# See examples/skills/weather.py in the repo for a template.
+[skills]
+dir = "~/.jarvis/skills"
+
+# HTTP server for remote commands (phone-as-remote / iOS Shortcuts).
+# Default: localhost-only. To expose on LAN, set host = "0.0.0.0" and
+# reach it via Tailscale from your phone.
+#
+# A bearer token is required. Set via JARVIS_SERVER_TOKEN env var (preferred)
+# or `token = "..."` here (less safe — keep this file out of git).
+[server]
+host = "127.0.0.1"
+port = 8765
+# token = "your-long-random-string"

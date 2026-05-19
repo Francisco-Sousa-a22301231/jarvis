@@ -32,6 +32,12 @@ class Config:
     gmail_token_path: Path
     contacts_path: Path
     watcher_vip_senders: tuple[str, ...]
+    watcher_calendar_lead_minutes: int
+    watcher_trello_list: str
+    skills_dir: Path
+    server_host: str
+    server_port: int
+    server_token: str | None
     vad_aggressiveness: int
     silence_seconds: float
     max_utterance_seconds: float
@@ -110,6 +116,21 @@ class Config:
             ).expanduser(),
             watcher_vip_senders=tuple(
                 data.get("watcher", {}).get("vip_senders", [])
+            ),
+            watcher_calendar_lead_minutes=int(
+                data.get("watcher", {}).get("calendar_lead_minutes", 0)
+            ),
+            watcher_trello_list=str(
+                data.get("watcher", {}).get("trello_list", "")
+            ),
+            skills_dir=Path(
+                data.get("skills", {}).get("dir", "~/.jarvis/skills")
+            ).expanduser(),
+            server_host=str(data.get("server", {}).get("host", "127.0.0.1")),
+            server_port=int(data.get("server", {}).get("port", 8765)),
+            server_token=(
+                os.getenv("JARVIS_SERVER_TOKEN")
+                or data.get("server", {}).get("token")
             ),
             vad_aggressiveness=int(vad.get("aggressiveness", 2)),
             silence_seconds=float(vad.get("silence_seconds", 1.0)),

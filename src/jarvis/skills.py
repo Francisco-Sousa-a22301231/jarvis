@@ -15,7 +15,7 @@ class Skill:
     requires_confirm: bool = False  # voice "Confirm?" before dispatch
 
 
-SKILL_CATALOG: tuple[Skill, ...] = (
+SKILL_CATALOG: list[Skill] = [
     Skill(
         id="code",
         description="Write, edit, debug, or test code in a software project. ex: 'add a dark mode toggle', 'fix the login bug'",
@@ -54,7 +54,11 @@ SKILL_CATALOG: tuple[Skill, ...] = (
         id="direct",
         description="Smalltalk, greetings, factual questions, status checks. ex: 'hello', 'are you there', 'what time is it'",
     ),
-)
+    Skill(
+        id="memory_query",
+        description="Recall recent voice interactions. ex: 'what did I ask earlier', 'what was my last command', 'history'",
+    ),
+]
 
 
 def skill_ids() -> list[str]:
@@ -70,3 +74,17 @@ def requires_confirm(skill_id: str) -> bool:
         if s.id == skill_id:
             return s.requires_confirm
     return False
+
+
+def register(skill: Skill) -> None:
+    """Append a custom skill to the catalog at startup.
+
+    Called by `skills_loader.py` for each valid file in ~/.jarvis/skills/.
+    Must run before route() (which caches the catalog into its system prompt).
+    """
+    # Idempotent: replace any existing entry with the same id (e.g. on reload).
+    for i, s in enumerate(SKILL_CATALOG):
+        if s.id == skill.id:
+            SKILL_CATALOG[i] = skill
+            return
+    SKILL_CATALOG.append(skill)

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent for the Jarvis HTTP remote-command server.
+
+  Install: cp launchd/com.francisco.jarvis-server.plist ~/Library/LaunchAgents/
+           launchctl load ~/Library/LaunchAgents/com.francisco.jarvis-server.plist
+
+  Default: listens on 127.0.0.1:8765. To expose on your LAN (so a phone
+  can hit it), set server.host = "0.0.0.0" in ~/.jarvis/config.toml and
+  set JARVIS_SERVER_TOKEN in this plist's EnvironmentVariables (NEVER
+  commit the token).
+
+  Recommended: reach the server from your phone via Tailscale rather than
+  exposing it on the public internet.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.francisco.jarvis-server</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/francisco/StudioProjects/jarvis/.venv/bin/python</string>
+        <string>-m</string>
+        <string>jarvis</string>
+        <string>serve</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/francisco/StudioProjects/jarvis</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/francisco/.jarvis/server.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/francisco/.jarvis/server.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <!-- Set your token in a way that doesn't end up in git, e.g. via a
+             separate launchctl setenv call before loading this plist:
+                 launchctl setenv JARVIS_SERVER_TOKEN $(cat ~/.jarvis/server-token)
+             Then either reference JARVIS_SERVER_TOKEN here, or rely on
+             ~/.jarvis/config.toml's server.token field. -->
+    </dict>
+</dict>
+</plist>
