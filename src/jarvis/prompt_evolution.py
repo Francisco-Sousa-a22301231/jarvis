@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from .llm import haiku
@@ -121,7 +121,7 @@ def evolve(
             skill=parent.skill,
             template=new_template_text,
             parent_id=parent.id,
-            created_at=datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            created_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             active=True,
         )
     )
