@@ -1,6 +1,6 @@
 # Jarvis
 
-Voice-driven orchestrator that uses Claude Code. Wake-word activated, runs as a background daemon on macOS.
+Voice-driven orchestrator that uses Claude Code. Wake-word activated, runs as a background daemon. **Works on macOS and Windows** — Linux has partial support (audio + Google services work; native notifications use `notify-send`).
 
 **Phase 1 (this)**: voice → Claude Code → voice. Single project, no router yet.
 
@@ -19,6 +19,29 @@ ElevenLabs streaming TTS  (or macOS `say` fallback)
      ↓
 back to waiting for wake
 ```
+
+## Quick start — Windows
+
+```powershell
+cd $env:USERPROFILE\StudioProjects\jarvis
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -e ".[dev,gmail]"        # gmail extras enable Google Calendar too
+pytest tests\                          # mocked, no audio/API needed
+
+# Free Picovoice key: https://console.picovoice.ai/
+mkdir $env:USERPROFILE\.jarvis -Force
+Copy-Item config.example.toml $env:USERPROFILE\.jarvis\config.toml
+# Edit: set picovoice.access_key + coder.default_project
+
+# Run the voice loop. TTS uses Windows SAPI by default — no ElevenLabs needed.
+python -m jarvis
+# Say "Jarvis" → wait for "Yes?" → speak a task
+```
+
+Mail and Calendar default to **Google** on Windows (Gmail OAuth + Google Calendar). One-time setup creates an OAuth client at https://console.cloud.google.com/ — see `[google]` section in `config.example.toml`. Same credentials cover both APIs.
+
+Daemon mode on Windows: run `python -m jarvis` in a terminal, or set up a Scheduled Task (Task Scheduler → Trigger: At log on → Action: `python.exe -m jarvis`).
 
 ## Setup (macOS)
 

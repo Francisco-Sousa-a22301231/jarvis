@@ -50,32 +50,92 @@ def _save_state(path: Path, state: dict) -> None:
 
 
 def _notify(title: str, body: str) -> bool:
-    """Post a macOS notification. Returns True if sent."""
-    if platform.system() != "Darwin":
-        log.info("[notify on non-mac] %s — %s", title, body)
-        return False
+    """Post a desktop notification. Returns True if sent.
+
+    macOS:   osascript display notification (banner).
+    Windows: PowerShell BurntToast if installed, else log + system beep.
+    Other:   notify-send if available, else log.
+    """
+    system = platform.system()
+    if system == "Darwin":
+        return _notify_macos(title, body)
+    if system == "Windows":
+        return _notify_windows(title, body)
+    if system == "Linux":
+        return _notify_linux(title, body)
+    log.info("[notify] %s — %s", title, body)
+    return False
+
+
+def _notify_macos(title: str, body: str) -> bool:
     if not shutil.which("osascript"):
         return False
-    # Escape double quotes in user-supplied strings.
     safe_title = title.replace('"', '\\"')
     safe_body = body.replace('"', '\\"')
     script = f'display notification "{safe_body}" with title "{safe_title}"'
     try:
         subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True,
-            timeout=10,
-            check=False,
+            ["osascript", "-e", script], capture_output=True, timeout=10, check=False
         )
         return True
     except Exception:
-        log.exception("notify failed")
+        log.exception("macOS notify failed")
         return False
 
 
+def _notify_windows(title: str, body: str) -> bool:
+    """Try BurntToast → fall back to console message + system beep."""
+    powershell = shutil.which("pwsh.exe") or shutil.which("powershell.exe")
+    if powershell is not None:
+        # Single-quoted PowerShell strings: escape ' as ''
+        t = title.replace("'", "''")
+        b = body.replace("'", "''")
+        # Use BurntToast if available; otherwise this command will fail silently
+        # and we'll fall through to the console+beep path.
+        script = (
+            "if (Get-Module -ListAvailable -Name BurntToast) {"
+            f"  New-BurntToastNotification -Text '{t}', '{b}'"
+            "} else { exit 1 }"
+        )
+        try:
+            proc = subprocess.run(
+                [powershell, "-NoProfile", "-NonInteractive", "-Command", script],
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+            if proc.returncode == 0:
+                return True
+        except Exception:
+            log.exception("BurntToast attempt failed")
+
+    # Fallback: log line + system beep so a backgrounded daemon still gives a cue.
+    log.info("[notify] %s — %s", title, body)
+    try:
+        import winsound
+
+        winsound.MessageBeep()
+        return True
+    except Exception:
+        return False
+
+
+def _notify_linux(title: str, body: str) -> bool:
+    if shutil.which("notify-send"):
+        try:
+            subprocess.run(
+                ["notify-send", title, body], capture_output=True, timeout=10, check=False
+            )
+            return True
+        except Exception:
+            pass
+    log.info("[notify] %s — %s", title, body)
+    return False
+
+
 def watch_mail(
-    gmail_credentials_path: Path,
-    gmail_token_path: Path,
+    google_credentials_path: Path,
+    google_token_path: Path,
     vip_senders: tuple[str, ...],
     state_path: Path = DEFAULT_STATE_PATH,
     max_messages: int = 8,
@@ -87,8 +147,8 @@ def watch_mail(
     from .agents.gmail import GmailAgent
 
     agent = GmailAgent(
-        credentials_path=gmail_credentials_path,
-        token_path=gmail_token_path,
+        credentials_path=google_credentials_path,
+        token_path=google_token_path,
         max_results=max_messages,
     )
     service, err = agent._service_or_error()
@@ -160,14 +220,42 @@ return out
 
 def watch_calendar(
     lead_minutes: int,
+    *,
+    backend: str = "google",
+    google_credentials_path: Path | None = None,
+    google_token_path: Path | None = None,
     state_path: Path = DEFAULT_STATE_PATH,
 ) -> WatcherResult:
-    """Notify for events starting within `lead_minutes`, once each."""
+    """Notify for events starting within `lead_minutes`, once each.
+
+    backend="google": queries Google Calendar (cross-platform).
+    backend="applescript": macOS Calendar.app via osascript.
+    """
     if lead_minutes <= 0:
         return WatcherResult(notified=0, checked=0, skipped_reason="calendar watcher disabled")
-    if platform.system() != "Darwin":
-        return WatcherResult(notified=0, checked=0, skipped_reason="calendar watcher needs macOS")
 
+    if backend == "google":
+        if not (google_credentials_path and google_token_path):
+            return WatcherResult(
+                notified=0, checked=0,
+                skipped_reason="calendar watcher needs google_credentials_path/token_path",
+            )
+        return _watch_calendar_google(
+            lead_minutes,
+            google_credentials_path,
+            google_token_path,
+            state_path,
+        )
+
+    if platform.system() != "Darwin":
+        return WatcherResult(
+            notified=0, checked=0,
+            skipped_reason="applescript calendar needs macOS — try backend='google'",
+        )
+    return _watch_calendar_applescript(lead_minutes, state_path)
+
+
+def _watch_calendar_applescript(lead_minutes: int, state_path: Path) -> WatcherResult:
     script = _APPLESCRIPT_UPCOMING.replace("lead_min", str(lead_minutes))
     try:
         proc = subprocess.run(
@@ -186,8 +274,7 @@ def watch_calendar(
         )
 
     state = _load_state(state_path)
-    seen: list[str] = state.get("calendar_notified", [])
-    seen_set = set(seen)
+    seen_set = set(state.get("calendar_notified", []))
 
     notified = 0
     fresh_seen: list[str] = []
@@ -204,11 +291,61 @@ def watch_calendar(
         if _notify(f"Soon: {time_str}", summary[:160]):
             notified += 1
 
-    # Replace state entirely with what's still in-window. Old keys expire when
-    # their event leaves the window, so the file stays small.
     state["calendar_notified"] = fresh_seen
     _save_state(state_path, state)
     return WatcherResult(notified=notified, checked=len(rows))
+
+
+def _watch_calendar_google(
+    lead_minutes: int,
+    google_credentials_path: Path,
+    google_token_path: Path,
+    state_path: Path,
+) -> WatcherResult:
+    from .agents.gcalendar import GoogleCalendarAgent
+
+    agent = GoogleCalendarAgent(
+        credentials_path=google_credentials_path,
+        token_path=google_token_path,
+    )
+    items = agent.upcoming_items(lead_minutes=lead_minutes)
+    if not items:
+        # Could be empty calendar OR auth failure — distinguish via service probe
+        _, err = agent._service_or_error()
+        if err:
+            return WatcherResult(notified=0, checked=0, skipped_reason=err)
+        return WatcherResult(notified=0, checked=0)
+
+    state = _load_state(state_path)
+    seen_set = set(state.get("calendar_notified", []))
+
+    notified = 0
+    fresh_seen: list[str] = []
+    from datetime import datetime as _dt
+
+    for ev in items:
+        ev_id = ev.get("id") or hashlib.sha1(
+            (ev.get("summary", "") + ev.get("start", {}).get("dateTime", "")).encode()
+        ).hexdigest()[:12]
+        fresh_seen.append(ev_id)
+        if ev_id in seen_set:
+            continue
+        summary = ev.get("summary", "(no title)")
+        start_obj = ev.get("start", {})
+        if "dateTime" in start_obj:
+            try:
+                dt = _dt.fromisoformat(start_obj["dateTime"].replace("Z", "+00:00"))
+                time_str = dt.astimezone().strftime("%H:%M")
+            except (ValueError, TypeError):
+                time_str = "?"
+        else:
+            time_str = "all-day"
+        if _notify(f"Soon: {time_str}", summary[:160]):
+            notified += 1
+
+    state["calendar_notified"] = fresh_seen
+    _save_state(state_path, state)
+    return WatcherResult(notified=notified, checked=len(items))
 
 
 # ─── Trello list-move watcher ──────────────────────────────────────────────
@@ -276,22 +413,26 @@ class WatchRun:
 
 def run_all(
     *,
-    gmail_credentials_path: Path,
-    gmail_token_path: Path,
+    google_credentials_path: Path,
+    google_token_path: Path,
     vip_senders: tuple[str, ...],
+    calendar_backend: str,
     calendar_lead_minutes: int,
     trello_watch_list: str,
     state_path: Path = DEFAULT_STATE_PATH,
 ) -> WatchRun:
     return WatchRun(
         mail=watch_mail(
-            gmail_credentials_path=gmail_credentials_path,
-            gmail_token_path=gmail_token_path,
+            google_credentials_path=google_credentials_path,
+            google_token_path=google_token_path,
             vip_senders=vip_senders,
             state_path=state_path,
         ),
         calendar=watch_calendar(
             lead_minutes=calendar_lead_minutes,
+            backend=calendar_backend,
+            google_credentials_path=google_credentials_path,
+            google_token_path=google_token_path,
             state_path=state_path,
         ),
         trello=watch_trello(

@@ -13,10 +13,13 @@ import logging
 from typing import Protocol
 
 from ..llm import haiku
-from .calendar import CalendarAgent
 from .trello import TrelloAgent
 
 log = logging.getLogger(__name__)
+
+
+class _RawEventsProvider(Protocol):
+    def raw_events(self) -> str: ...
 
 
 class _RawUnreadProvider(Protocol):
@@ -27,8 +30,8 @@ class BriefAgent:
     def __init__(
         self,
         trello: TrelloAgent | None,
-        calendar: CalendarAgent | None,
-        mail: _RawUnreadProvider | None,  # MailAgent or GmailAgent
+        calendar: _RawEventsProvider | None,  # CalendarAgent or GoogleCalendarAgent
+        mail: _RawUnreadProvider | None,      # MailAgent or GmailAgent
     ):
         self.trello = trello
         self.calendar = calendar

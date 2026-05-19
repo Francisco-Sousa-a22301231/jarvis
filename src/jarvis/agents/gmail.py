@@ -1,31 +1,20 @@
-"""Gmail OAuth agent: read unread mail via the Gmail API.
+"""Gmail OAuth agent: read unread mail + send via the Gmail API.
 
-For users who don't run macOS Mail.app. Setup is more work than the
-AppleScript path:
+Cross-platform (works on Mac and Windows). Setup is the one-time Google
+Cloud Console flow — see README → Google setup.
 
-  1. https://console.cloud.google.com/  →  new project (or reuse).
-  2. Enable the Gmail API.
-  3. APIs & Services → Credentials → Create OAuth client ID → Desktop app.
-  4. Download credentials JSON → save as ~/.jarvis/gmail-credentials.json.
-  5. First run pops a browser to authorize; token is cached at
-     ~/.jarvis/gmail-token.json. Subsequent runs are silent.
-
-Scopes: read-only. Sending is intentionally NOT in this agent yet — that
-would be a destructive action and belongs behind the confirmation gate.
+Auth is shared with the Google Calendar agent through google_auth.py, so
+one credentials.json + one token.json covers both.
 """
 from __future__ import annotations
 
 import logging
 from pathlib import Path
 
+from ..google_auth import build_service
 from ..llm import haiku
 
 log = logging.getLogger(__name__)
-
-SCOPES = [
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.send",
-]
 
 
 class GmailAgent:
@@ -44,46 +33,11 @@ class GmailAgent:
         if self._service is not None:
             return self._service, None
         try:
-            from google.auth.transport.requests import Request
-            from google.oauth2.credentials import Credentials
-            from google_auth_oauthlib.flow import InstalledAppFlow
-            from googleapiclient.discovery import build
-        except ImportError:
-            return None, (
-                "Gmail libraries missing. Install with `pip install -e .[gmail]`."
+            self._service = build_service(
+                "gmail", "v1", self.credentials_path, self.token_path
             )
-
-        if not self.credentials_path.exists():
-            return None, (
-                f"Gmail credentials missing at {self.credentials_path}. "
-                "See README — Phase 4 Gmail setup."
-            )
-
-        creds = None
-        if self.token_path.exists():
-            try:
-                creds = Credentials.from_authorized_user_file(
-                    str(self.token_path), SCOPES
-                )
-            except Exception as e:
-                log.warning("Gmail token unreadable (%s); will reauth", e)
-
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                try:
-                    creds.refresh(Request())
-                except Exception as e:
-                    log.warning("Token refresh failed (%s); falling back to flow", e)
-                    creds = None
-            if not creds:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    str(self.credentials_path), SCOPES
-                )
-                creds = flow.run_local_server(port=0)
-            self.token_path.parent.mkdir(parents=True, exist_ok=True)
-            self.token_path.write_text(creds.to_json(), encoding="utf-8")
-
-        self._service = build("gmail", "v1", credentials=creds, cache_discovery=False)
+        except RuntimeError as e:
+            return None, str(e)
         return self._service, None
 
     def _fetch_unread(self) -> list[str]:
