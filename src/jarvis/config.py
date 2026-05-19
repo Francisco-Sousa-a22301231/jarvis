@@ -21,6 +21,8 @@ class Config:
     # picovoice_key is None when not configured. Only the daemon subcommand
     # needs it; `brief`, `route`, and `qa` work fine without audio.
     picovoice_key: str | None
+    wake_word_backend: str  # "openwakeword" (default) | "porcupine" | "none"
+    openwakeword_threshold: float
     elevenlabs_key: str | None
     elevenlabs_voice_id: str
     elevenlabs_model: str
@@ -71,6 +73,13 @@ class Config:
         if not picovoice_key or picovoice_key.startswith("YOUR_"):
             picovoice_key = None  # daemon will validate at startup
 
+        ww = data.get("wake_word", {})
+        # If user explicitly sets a backend, use it. Otherwise pick a sensible
+        # default: porcupine if they have a key, openwakeword otherwise.
+        wake_word_backend = ww.get("backend")
+        if not wake_word_backend:
+            wake_word_backend = "porcupine" if picovoice_key else "openwakeword"
+
         elevenlabs_key = os.getenv("ELEVENLABS_KEY") or eleven.get("api_key")
         if elevenlabs_key and elevenlabs_key.startswith("YOUR_"):
             elevenlabs_key = None
@@ -95,6 +104,8 @@ class Config:
 
         return cls(
             picovoice_key=picovoice_key,
+            wake_word_backend=wake_word_backend,
+            openwakeword_threshold=float(ww.get("openwakeword_threshold", 0.5)),
             elevenlabs_key=elevenlabs_key,
             elevenlabs_voice_id=eleven.get("voice_id", "EXAVITQu4vr4xnSDxMaL"),
             elevenlabs_model=eleven.get("model", "eleven_turbo_v2_5"),

@@ -5,6 +5,7 @@ description = "Voice-driven AI assistant orchestrator that uses Claude Code"
 requires-python = ">=3.11"
 authors = [{ name = "Francisco Sousa" }]
 dependencies = [
+    "openwakeword>=0.6.0",
     "pvporcupine>=3.0.2",
     "sounddevice>=0.4.6",
     "webrtcvad>=2.0.10",

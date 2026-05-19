@@ -3,9 +3,19 @@
 
 log_level = "INFO"
 
+# ─── Wake word ────────────────────────────────────────────────────────────
+# Default backend is openwakeword (Apache 2.0, no signup, runs on ONNX).
+# Switch to "porcupine" if you have a Picovoice access key — better
+# detection but their free tier is gated by a manual review process.
+[wake_word]
+backend = "openwakeword"     # "openwakeword" | "porcupine" | "none"
+openwakeword_threshold = 0.5 # 0.0-1.0; higher = fewer false positives
+
 [picovoice]
-# Free key: https://console.picovoice.ai/
-# Built-in "jarvis" wake word — no custom model needed.
+# Only needed if [wake_word].backend = "porcupine".
+# Sign up at https://console.picovoice.ai/. Picovoice currently gates
+# free-tier access via manual review; many personal-email signups are
+# rejected. openWakeWord is the recommended path for personal use.
 access_key = "YOUR_PICOVOICE_KEY"
 
 [whisper]

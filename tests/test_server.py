@@ -19,6 +19,8 @@ from jarvis.router import Routed
 def _make_config(tmp_path: Path, token: str | None = "test-token") -> Config:
     return Config(
         picovoice_key=None,
+        wake_word_backend="none",
+        openwakeword_threshold=0.5,
         elevenlabs_key=None,
         elevenlabs_voice_id="x",
         elevenlabs_model="x",
