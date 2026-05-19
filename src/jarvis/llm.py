@@ -1,66 +1,93 @@
-"""Anthropic client wrapper with prompt caching helper.
+"""LLM wrapper that uses Claude Code (and therefore your Max subscription).
 
-Single shared client. Lazy-initialized. Reads ANTHROPIC_API_KEY from env.
-All Haiku calls use prompt caching on the system block to amortize router/agent prompts.
+Why subprocess instead of the `anthropic` SDK:
+  The Anthropic API is a separate product from the Claude.ai / Max subscription.
+  The SDK bills pay-as-you-go even if you're a Max subscriber. Routing every
+  call through the `claude` CLI keeps all LLM usage on the Max plan.
+
+Tradeoff: each spawn is ~1–2s of overhead vs ~400ms for a direct API call.
+For Phase 2 voice commands that hit router + summarizer, that's ~2–3s extra
+perceived latency. We mitigate later with a keyword fast-path that skips the
+router for unambiguous phrases.
 """
 from __future__ import annotations
 
 import logging
-import os
-from typing import Any
-
-from anthropic import Anthropic
+import shutil
+import subprocess
 
 log = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "claude-haiku-4-5"
+CLAUDE_BIN = "claude"
 
-_client: Anthropic | None = None
-
-
-def get_client() -> Anthropic:
-    global _client
-    if _client is None:
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise RuntimeError(
-                "ANTHROPIC_API_KEY not set. Required for router, summarizer, and agents."
-            )
-        _client = Anthropic(api_key=api_key)
-    return _client
+# Anything file/code/web-touching — deny by default so router/summarizer calls
+# can't accidentally trigger an agentic loop. Pure text in, text out.
+_DISALLOWED_TOOLS = (
+    "Read,Write,Edit,Bash,Glob,Grep,Task,TodoWrite,WebFetch,WebSearch,"
+    "NotebookEdit,Agent,SlashCommand"
+)
 
 
 def haiku(
     system: str,
     user: str,
-    max_tokens: int = 300,
-    cache: bool = True,
+    max_tokens: int = 300,  # advisory only — not enforceable via CLI
+    cache: bool = True,     # ignored — Claude Code may cache internally
     model: str = DEFAULT_MODEL,
+    timeout: int = 60,
 ) -> str:
-    """One-shot Haiku call. Returns the trimmed text response.
+    """One-shot LLM call via the `claude` CLI. Returns trimmed text.
 
-    If `cache=True`, the system block is marked cache_control:ephemeral so
-    repeat calls with the same system prompt hit the cache (~10x cheaper).
+    Args:
+        system: behavior/persona instructions (concatenated with `user`).
+        user:   the actual content to classify, summarize, or answer.
+        model:  Claude model id. Defaults to Haiku 4.5 for cost/speed.
+        timeout: seconds before we kill the spawn.
+
+    Raises:
+        RuntimeError: claude CLI missing, timed out, or returned non-zero.
     """
-    client = get_client()
-    if cache:
-        system_block: Any = [
-            {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
-        ]
-    else:
-        system_block = system
+    if not shutil.which(CLAUDE_BIN):
+        raise RuntimeError(
+            f"`{CLAUDE_BIN}` not on PATH. Install Claude Code: "
+            "https://docs.claude.com/en/docs/claude-code/quickstart"
+        )
 
-    resp = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        system=system_block,
-        messages=[{"role": "user", "content": user}],
+    prompt = (
+        f"{system}\n\n"
+        "--- User input ---\n"
+        f"{user}\n"
+        "--- End input ---\n\n"
+        "Reply with the requested output only. Do NOT use any tools. "
+        "Do NOT explain your reasoning."
     )
-    log.debug(
-        "haiku call: in=%d out=%d cache_read=%d cache_create=%d",
-        resp.usage.input_tokens,
-        resp.usage.output_tokens,
-        getattr(resp.usage, "cache_read_input_tokens", 0) or 0,
-        getattr(resp.usage, "cache_creation_input_tokens", 0) or 0,
-    )
-    return resp.content[0].text.strip()
+
+    cmd = [
+        CLAUDE_BIN,
+        "-p",
+        "--model", model,
+        "--output-format", "text",
+        "--disallowedTools", _DISALLOWED_TOOLS,
+    ]
+
+    log.debug("claude -p model=%s prompt_len=%d", model, len(prompt))
+    try:
+        proc = subprocess.run(
+            cmd,
+            input=prompt,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"LLM call timed out after {timeout}s")
+
+    if proc.returncode != 0:
+        log.error("claude -p exit=%d stderr=%r", proc.returncode, proc.stderr[:300])
+        raise RuntimeError(
+            f"claude CLI exited {proc.returncode}: {proc.stderr.strip()[:200] or '(no stderr)'}"
+        )
+
+    return proc.stdout.strip()

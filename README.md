@@ -111,7 +111,10 @@ of:
 
 ### Setup
 
-1. Get an Anthropic API key (https://console.anthropic.com/) → set `ANTHROPIC_API_KEY`.
+1. Make sure `claude` (Claude Code) is installed and you're logged in via
+   `claude login`. All LLM calls — router, summarizers, brief composer —
+   go through `claude -p`, which means **they bill against your Claude Max
+   subscription, not pay-as-you-go API.** No `ANTHROPIC_API_KEY` needed.
 2. Optional — Trello: get key+token at https://trello.com/app-key. Set
    `TRELLO_KEY`, `TRELLO_TOKEN`, `TRELLO_BOARD_ID`.
 3. Calendar / Mail: grant Automation permission when macOS prompts on first use
@@ -139,9 +142,16 @@ Edit the plist's `StartCalendarInterval` to change the time.
 
 ### Costs
 
-Router + agent summarizers add ~$0.001–0.003 per voice command (Haiku 4.5, with
-prompt caching on the router system prompt). At 100 commands/day that's ~$0.10–0.30.
-Claude Code spawns still dominate total spend — same as if you typed.
+All LLM usage (router, summarizers, brief, coder) goes through `claude -p` on
+your **Claude Max subscription**. No per-token API billing. Only out-of-pocket
+costs are Picovoice (free tier) and optionally ElevenLabs (~$5/mo).
+
+### Latency note
+
+Each `claude -p` spawn adds ~1–2s of overhead vs a raw API call. For commands
+that hit router + agent + summarizer, perceived latency is ~3–5s. A keyword
+fast-path that skips the router for unambiguous phrases ("morning brief",
+"trello", "calendar") is on the Phase 3 list.
 
 ## Phase 3 preview
 
