@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.env
+*.log
+.pytest_cache/
+.DS_Store
+.coverage
+htmlcov/
+
+# Local config with secrets
+config.toml
+!config.example.toml

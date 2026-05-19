@@ -1,0 +1,63 @@
+# Copy to ~/.jarvis/config.toml and fill in.
+# Environment variables (PICOVOICE_KEY, ELEVENLABS_KEY) override file values.
+
+log_level = "INFO"
+
+[picovoice]
+# Free key: https://console.picovoice.ai/
+# Built-in "jarvis" wake word — no custom model needed.
+access_key = "YOUR_PICOVOICE_KEY"
+
+[whisper]
+# tiny.en (fastest, less accurate) | base.en (sweet spot on 2019 Intel Mac) | small.en
+model = "base.en"
+# CPU is the only safe option on Intel Mac. Apple Silicon could use "auto".
+device = "cpu"
+compute_type = "int8"
+
+[elevenlabs]
+# Optional. If unset, falls back to macOS `say` (free, OK quality).
+# Key: https://elevenlabs.io/app/settings/api-keys
+# api_key = "YOUR_ELEVENLABS_KEY"
+# voice_id = "EXAVITQu4vr4xnSDxMaL"  # Bella
+# model = "eleven_turbo_v2_5"
+
+[coder]
+# Project the voice commands operate on (Phase 1 = single project).
+# Phase 2 will add multi-project routing via Haiku dispatcher.
+default_project = "~/StudioProjects/MyLessons-Project"
+
+# Claude Code CLI binary. Override if not on PATH.
+claude_bin = "claude"
+
+# DANGEROUS: skip all permission prompts inside Claude Code.
+# Required for daemon mode (no human at the keyboard).
+# Only enable once you trust the prompts your daemon is feeding it.
+dangerously_skip_permissions = false
+
+# Max time a single Claude Code task can run (seconds).
+timeout_seconds = 600
+
+[vad]
+# webrtcvad aggressiveness: 0 (least) – 3 (most). 2 is good for desk mics.
+aggressiveness = 2
+# Seconds of silence after speech before we stop recording.
+silence_seconds = 1.0
+# Hard cap on a single utterance.
+max_utterance_seconds = 30.0
+
+# ─── Phase 2 ──────────────────────────────────────────────────────────────
+# Phase 2 adds a Haiku router + Trello / Calendar / Mail / Brief agents.
+# These read credentials from environment variables (NOT this file), so the
+# config stays free of secrets.
+#
+# Required for the router:
+#   ANTHROPIC_API_KEY=sk-ant-...
+#
+# Optional, for the Trello agent (auto-disables if absent):
+#   TRELLO_KEY=...
+#   TRELLO_TOKEN=...
+#   TRELLO_BOARD_ID=...
+#
+# Calendar + Mail agents are macOS-only (AppleScript). Grant Automation
+# permission to Calendar / Mail when prompted on first use.

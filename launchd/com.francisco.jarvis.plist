@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent for Jarvis.
+  Install: cp launchd/com.francisco.jarvis.plist ~/Library/LaunchAgents/
+           launchctl load ~/Library/LaunchAgents/com.francisco.jarvis.plist
+  Reload:  launchctl unload <path> && launchctl load <path>
+  Status:  launchctl list | grep jarvis
+  Logs:    tail -f ~/.jarvis/jarvis.log ~/.jarvis/jarvis.err.log
+
+  NOTE: macOS will prompt for microphone access the FIRST time the daemon
+  reads from the mic. The prompt is attached to /usr/local/bin/python3 (or
+  whichever interpreter you use), not to Jarvis itself. Grant it once.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.francisco.jarvis</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <!-- Adjust to your venv python: -->
+        <string>/Users/francisco/StudioProjects/jarvis/.venv/bin/python</string>
+        <string>-m</string>
+        <string>jarvis</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/francisco/StudioProjects/jarvis</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/francisco/.jarvis/jarvis.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/francisco/.jarvis/jarvis.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <!-- Or load secrets from a file you source before launchctl load -->
+    </dict>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>

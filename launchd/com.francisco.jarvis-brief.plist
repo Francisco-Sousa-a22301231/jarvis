@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent for the daily morning brief.
+  Install: cp launchd/com.francisco.jarvis-brief.plist ~/Library/LaunchAgents/
+           launchctl load ~/Library/LaunchAgents/com.francisco.jarvis-brief.plist
+  Disable: launchctl unload ~/Library/LaunchAgents/com.francisco.jarvis-brief.plist
+  Runs:    every day at 08:00 local time
+  Output:  ~/.jarvis/brief.log (each day's brief appended)
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.francisco.jarvis-brief</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/francisco/StudioProjects/jarvis/.venv/bin/python</string>
+        <string>-m</string>
+        <string>jarvis</string>
+        <string>brief</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/francisco/StudioProjects/jarvis</string>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>8</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/francisco/.jarvis/brief.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/francisco/.jarvis/brief.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>
