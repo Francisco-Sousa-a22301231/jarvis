@@ -8,6 +8,9 @@ dependencies = [
     "pvporcupine>=3.0.2",
     "sounddevice>=0.4.6",
     "webrtcvad>=2.0.10",
+    # webrtcvad imports pkg_resources, which setuptools 81+ removed. Pin
+    # until either webrtcvad gets fixed or we switch VAD libraries.
+    "setuptools<81",
     "faster-whisper>=1.0.0",
     "numpy>=1.24",
     "elevenlabs>=1.0.0",

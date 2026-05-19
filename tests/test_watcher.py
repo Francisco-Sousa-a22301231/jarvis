@@ -21,8 +21,8 @@ def test_load_missing_state(tmp_path: Path):
 
 def test_skipped_when_no_vips(tmp_path: Path):
     result = watcher.watch_mail(
-        gmail_credentials_path=tmp_path / "c.json",
-        gmail_token_path=tmp_path / "t.json",
+        google_credentials_path=tmp_path / "c.json",
+        google_token_path=tmp_path / "t.json",
         vip_senders=(),
         state_path=tmp_path / "state.json",
     )
@@ -33,8 +33,8 @@ def test_skipped_when_no_vips(tmp_path: Path):
 def test_skipped_when_gmail_not_configured(tmp_path: Path):
     """No credentials file → graceful skip, not a crash."""
     result = watcher.watch_mail(
-        gmail_credentials_path=tmp_path / "missing.json",
-        gmail_token_path=tmp_path / "t.json",
+        google_credentials_path=tmp_path / "missing.json",
+        google_token_path=tmp_path / "t.json",
         vip_senders=("important@x.com",),
         state_path=tmp_path / "state.json",
     )
@@ -60,8 +60,8 @@ def test_notifies_new_vip_mail(tmp_path: Path):
         "jarvis.watcher._notify", return_value=True
     ) as notify:
         result = watcher.watch_mail(
-            gmail_credentials_path=tmp_path / "c.json",
-            gmail_token_path=tmp_path / "t.json",
+            google_credentials_path=tmp_path / "c.json",
+            google_token_path=tmp_path / "t.json",
             vip_senders=("important@x.com",),
             state_path=tmp_path / "state.json",
         )

@@ -28,7 +28,7 @@ import logging
 import random
 import threading
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -136,7 +136,7 @@ class PromptRegistry:
                     skill="code",
                     template=_DEFAULT_CODER_TEMPLATE,
                     parent_id=None,
-                    created_at=datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                    created_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     active=True,
                 )
             )
@@ -175,13 +175,14 @@ class PromptRegistry:
 
         # Exploitation: best win rate. Untried beats any "explored to bad".
         stats_by_id = {s.template_id: s for s in self._stats_locked_iter()}
-        scored = []
+        scored: list[tuple[float, PromptTemplate]] = []
         for t in active:
             s = stats_by_id.get(t.id)
             trials = s.successes + s.failures if s else 0
             if trials < MIN_SAMPLES_FOR_GREEDY:
-                # Treat under-sampled as exploration target.
-                scored.append((1.0, t))  # high priority
+                # Under-sampled templates outrank ANY known win rate so
+                # freshly added/evolved siblings are guaranteed traffic.
+                scored.append((float("inf"), t))
             else:
                 scored.append((s.win_rate, t))
         scored.sort(key=lambda pair: pair[0], reverse=True)
@@ -228,7 +229,7 @@ class PromptRegistry:
                         template_id=template_id,
                         task=task[:300],
                         outcome=outcome,
-                        timestamp=datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                        timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                         detail=detail[:500],
                     )
                 )
