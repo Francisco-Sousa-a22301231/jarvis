@@ -188,6 +188,7 @@ def run(config: Config) -> None:
         voice_id=config.elevenlabs_voice_id,
         model=config.elevenlabs_model,
     )
+    mouth.prewarm()  # hide TTS cold-start cost during boot
     memory = Memory()
     registry = PromptRegistry()
     dispatcher, coder_shim = _build_dispatcher(config, memory, registry)
@@ -208,6 +209,9 @@ def run(config: Config) -> None:
     say("Jarvis online.")
     log.info("Waiting for wake word ('jarvis')...")
 
+    def _t() -> float:
+        return time.monotonic()
+
     engaged_timeout = float(getattr(config, "engaged_timeout_seconds", ENGAGED_TIMEOUT_S))
 
     try:
@@ -220,6 +224,7 @@ def run(config: Config) -> None:
             # === INNER: ENGAGED — multi-turn until silence timeout or sleep ===
             while True:
                 state.set(JarvisState.ENGAGED)
+                _rec_start = _t()
                 audio = ears.record_utterance(
                     max_seconds=engaged_timeout,
                     silence_seconds=config.silence_seconds,
@@ -229,8 +234,11 @@ def run(config: Config) -> None:
                     break
 
                 state.set(JarvisState.THINKING, "transcribing")
+                _stt_start = _t()
                 transcript = ears.transcribe(audio)
+                _stt_done = _t()
                 log.info("Transcript: %r", transcript)
+                log.info("⏱ record→stt: %.2fs (stt=%.2fs)", _stt_done - _rec_start, _stt_done - _stt_start)
                 state.set(JarvisState.THINKING, transcript)
 
                 lower = transcript.lower()
@@ -251,8 +259,13 @@ def run(config: Config) -> None:
                     log.info("Project: %s", proj.name)
                     coder_shim.set_next_project(proj.name)
 
+                _route_start = _t()
                 decision = route(cleaned, memory=memory)
-                log.info("Routed: %s | %s", decision.skill, decision.task)
+                _route_done = _t()
+                log.info(
+                    "Routed: %s | %s | ⏱ %.2fs",
+                    decision.skill, decision.task, _route_done - _route_start,
+                )
 
                 # Planner: clarifying question for ambiguous code tasks.
                 if decision.skill == "code":
@@ -295,8 +308,13 @@ def run(config: Config) -> None:
                     say("On it.")
 
                 state.set(JarvisState.THINKING, decision.task)
+                _disp_start = _t()
                 response = dispatcher.execute(decision)
+                _disp_done = _t()
+                log.info("Dispatch (%s): ⏱ %.2fs", decision.skill, _disp_done - _disp_start)
+                _speak_start = _t()
                 say(response)
+                log.info("Speak: ⏱ %.2fs (e2e %.2fs)", _t() - _speak_start, _t() - _rec_start)
                 memory.append(transcript, decision.skill, response)
 
                 # Outcome wiring for the prompt registry.
