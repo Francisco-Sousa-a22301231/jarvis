@@ -164,3 +164,40 @@ class Mouth:
             model_id=self.model,
         )
         stream(audio_stream)
+
+    def prewarm(self) -> None:
+        """Open the TTS connection eagerly so the first real `speak()` doesn't
+        pay the cold-start cost. Currently only meaningful for edge-tts: we
+        do a tiny throwaway synthesis to warm the HTTPS connection and let
+        pygame.mixer initialise. ~1 second of work hidden during boot.
+        """
+        if self._client is not None:
+            return  # ElevenLabs streaming has its own warmup
+        if not self._have_edge:
+            return
+        try:
+            import pygame.mixer
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            # Use a single-letter text and don't actually play it.
+            import asyncio
+            import os
+            import tempfile
+            import edge_tts
+
+            async def _warm():
+                f = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+                f.close()
+                try:
+                    comm = edge_tts.Communicate("hi", self.edge_voice)
+                    await comm.save(f.name)
+                finally:
+                    try:
+                        os.unlink(f.name)
+                    except OSError:
+                        pass
+
+            asyncio.run(_warm())
+            log.info("TTS prewarmed")
+        except Exception:
+            log.exception("TTS prewarm failed (non-fatal)")
