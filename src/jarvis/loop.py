@@ -26,9 +26,11 @@ from .dispatcher import Dispatcher
 from .ears import Ears, build_wake_backend
 from .memory import Memory
 from .mouth import Mouth
+from . import orb_server
 from .projects import resolve_project
 from .prompt_registry import PromptRegistry
 from .router import route
+from .state import JarvisState, StateTracker
 from .skills import requires_confirm
 from .skills_loader import load_dir as load_custom_skills
 
@@ -137,6 +139,10 @@ class _CoderShim:
 
 
 def run(config: Config) -> None:
+    state = StateTracker()
+    state.set(JarvisState.BOOTING, "loading models")
+    orb_server.start(state, port=config.orb_port)
+
     wake_backend = build_wake_backend(
         backend=config.wake_word_backend,
         picovoice_key=config.picovoice_key,
@@ -170,24 +176,32 @@ def run(config: Config) -> None:
     POST_SPEAK_SETTLE_S = 0.4
 
     def say(text: str) -> None:
+        state.set(JarvisState.SPEAKING, text)
         mouth.speak(text)
         time.sleep(POST_SPEAK_SETTLE_S)
-        ears.wake.reset() if ears.wake is not None else None
+        if ears.wake is not None:
+            ears.wake.reset()
+        state.set(JarvisState.IDLE)
 
     say("Jarvis online.")
     log.info("Waiting for wake word ('jarvis')...")
 
     try:
         while True:
+            state.set(JarvisState.IDLE)
             ears.wait_for_wake()
+            state.set(JarvisState.LISTENING)
             say("Yes?")
 
+            state.set(JarvisState.LISTENING)
             audio = ears.record_utterance(
                 max_seconds=config.max_utterance_seconds,
                 silence_seconds=config.silence_seconds,
             )
+            state.set(JarvisState.THINKING, "transcribing")
             transcript = ears.transcribe(audio)
             log.info("Transcript: %r", transcript)
+            state.set(JarvisState.THINKING, transcript)
 
             if len(transcript) < 3:
                 say("Didn't catch that.")
@@ -244,9 +258,11 @@ def run(config: Config) -> None:
             if decision.skill == "code":
                 say("On it.")
 
+            state.set(JarvisState.THINKING, decision.task)
             response = dispatcher.execute(decision)
             say(response)
             memory.append(transcript, decision.skill, response)
+            state.set(JarvisState.IDLE)
 
             # Outcome wiring: if QA just ran and there's a pending code dispatch,
             # score the template that produced it.
@@ -260,4 +276,5 @@ def run(config: Config) -> None:
                         registry.record_outcome(cr.template_id, cr.task, "failure", response[:200])
                     coder_shim.last_result = None  # one-shot — don't double-score
     finally:
+        state.set(JarvisState.OFFLINE)
         ears.close()
