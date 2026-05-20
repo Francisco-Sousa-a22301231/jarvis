@@ -63,6 +63,11 @@ _ORB_HTML = """<!DOCTYPE html>
 
   /* State-specific styling */
   .orb.idle    { animation: breathe 5s infinite ease-in-out; }
+  .orb.engaged {
+    background: radial-gradient(circle at 30% 30%, #a78bfa 0%, #4c1d95 60%, #1a0a35 100%);
+    box-shadow: 0 0 110px 20px rgba(167,139,250,0.45), inset 0 0 60px rgba(255,255,255,0.08);
+    animation: breathe 2.5s infinite ease-in-out;
+  }
   .orb.booting {
     background: radial-gradient(circle at 30% 30%, #4b5563 0%, #1f2937 60%, #050811 100%);
     box-shadow: 0 0 80px 10px rgba(156,163,175,0.25);

@@ -38,6 +38,28 @@ log = logging.getLogger(__name__)
 
 CANCEL_TOKENS = ("cancel that", "never mind", "nevermind", "forget it")
 
+# Phrases that send Jarvis from ENGAGED back to IDLE (wake-word only).
+# Keep these distinct from CANCEL_TOKENS — these END the conversation,
+# whereas CANCEL_TOKENS only abort the current command.
+SLEEP_PHRASES = (
+    "go to sleep",
+    "you can sleep",
+    "you can go to sleep",
+    "go sleep",
+    "stop listening",
+    "that's all",
+    "that'll be all",
+    "thank you that's all",
+    "thanks that's all",
+    "bye jarvis",
+    "goodbye jarvis",
+    "jarvis sleep",
+    "jarvis stop",
+    "shut up",
+)
+
+ENGAGED_TIMEOUT_S = 90.0  # if no speech for this long, drop back to wake-word
+
 
 def _build_dispatcher(
     config: Config,
@@ -176,105 +198,120 @@ def run(config: Config) -> None:
     POST_SPEAK_SETTLE_S = 0.4
 
     def say(text: str) -> None:
+        """Speak. Caller is responsible for setting the post-speech state."""
         state.set(JarvisState.SPEAKING, text)
         mouth.speak(text)
         time.sleep(POST_SPEAK_SETTLE_S)
         if ears.wake is not None:
             ears.wake.reset()
-        state.set(JarvisState.IDLE)
 
     say("Jarvis online.")
     log.info("Waiting for wake word ('jarvis')...")
 
+    engaged_timeout = float(getattr(config, "engaged_timeout_seconds", ENGAGED_TIMEOUT_S))
+
     try:
         while True:
+            # === OUTER: IDLE — wait for the wake word ==========================
             state.set(JarvisState.IDLE)
             ears.wait_for_wake()
-            state.set(JarvisState.LISTENING)
             say("Yes?")
 
-            state.set(JarvisState.LISTENING)
-            audio = ears.record_utterance(
-                max_seconds=config.max_utterance_seconds,
-                silence_seconds=config.silence_seconds,
-            )
-            state.set(JarvisState.THINKING, "transcribing")
-            transcript = ears.transcribe(audio)
-            log.info("Transcript: %r", transcript)
-            state.set(JarvisState.THINKING, transcript)
+            # === INNER: ENGAGED — multi-turn until silence timeout or sleep ===
+            while True:
+                state.set(JarvisState.ENGAGED)
+                audio = ears.record_utterance(
+                    max_seconds=engaged_timeout,
+                    silence_seconds=config.silence_seconds,
+                )
+                if audio.size == 0:
+                    log.info("No follow-up within %.0fs — dropping to wake-word", engaged_timeout)
+                    break
 
-            if len(transcript) < 3:
-                say("Didn't catch that.")
-                continue
-            if any(tok in transcript.lower() for tok in CANCEL_TOKENS):
-                say("Cancelled.")
-                continue
+                state.set(JarvisState.THINKING, "transcribing")
+                transcript = ears.transcribe(audio)
+                log.info("Transcript: %r", transcript)
+                state.set(JarvisState.THINKING, transcript)
 
-            # Extract project mention (e.g. "in MyLessons add..."). If found,
-            # strip it from the transcript before routing.
-            proj, cleaned = resolve_project(transcript, config.projects)
-            if proj is not None:
-                log.info("Project: %s", proj.name)
-                coder_shim.set_next_project(proj.name)
-
-            decision = route(cleaned, memory=memory)
-            log.info("Routed: %s | %s", decision.skill, decision.task)
-
-            # Planner: for ambiguous code tasks, ask one clarifying question first.
-            if decision.skill == "code":
-                question = planner.clarification(decision.task)
-                if question:
-                    say(question)
-                    answer_audio = ears.record_utterance(max_seconds=15.0, silence_seconds=1.2)
-                    answer = ears.transcribe(answer_audio)
-                    log.info("Clarification answer: %r", answer)
-                    if answer.strip():
-                        decision = decision.__class__(  # Routed is frozen
-                            skill=decision.skill,
-                            task=planner.merge_clarification(decision.task, question, answer),
-                        )
-
-            # Confirmation gate for destructive skills.
-            if requires_confirm(decision.skill):
-                agent = dispatcher.agents.get(decision.skill)
-                if agent is not None and hasattr(agent, "propose"):
-                    try:
-                        proposal = agent.propose(decision.task)
-                    except Exception:
-                        log.exception("propose() failed; falling back to static template")
-                        proposal = proposal_for(decision.skill, decision.task)
-                else:
-                    proposal = proposal_for(decision.skill, decision.task)
-                say(f"{proposal} Confirm?")
-                confirm_audio = ears.record_utterance(max_seconds=8.0, silence_seconds=1.5)
-                confirm_text = ears.transcribe(confirm_audio)
-                log.info("Confirmation transcript: %r", confirm_text)
-                if not is_yes(confirm_text):
+                lower = transcript.lower()
+                if len(transcript) < 3:
+                    say("Didn't catch that.")
+                    continue
+                if any(p in lower for p in SLEEP_PHRASES):
+                    say("Going to sleep.")
+                    break
+                if any(tok in lower for tok in CANCEL_TOKENS):
                     say("Cancelled.")
-                    memory.append(transcript, decision.skill, "cancelled by user")
                     continue
 
-            # Acknowledge before potentially slow ops (Claude Code mostly).
-            if decision.skill == "code":
-                say("On it.")
+                # Extract project mention (e.g. "in MyLessons add..."). If found,
+                # strip it from the transcript before routing.
+                proj, cleaned = resolve_project(transcript, config.projects)
+                if proj is not None:
+                    log.info("Project: %s", proj.name)
+                    coder_shim.set_next_project(proj.name)
 
-            state.set(JarvisState.THINKING, decision.task)
-            response = dispatcher.execute(decision)
-            say(response)
-            memory.append(transcript, decision.skill, response)
-            state.set(JarvisState.IDLE)
+                decision = route(cleaned, memory=memory)
+                log.info("Routed: %s | %s", decision.skill, decision.task)
 
-            # Outcome wiring: if QA just ran and there's a pending code dispatch,
-            # score the template that produced it.
-            if decision.skill == "qa" and coder_shim.last_result is not None:
-                cr = coder_shim.last_result
-                if cr.template_id is not None and cr.task:
-                    upper = response.upper().lstrip()
-                    if upper.startswith("PASS"):
-                        registry.record_outcome(cr.template_id, cr.task, "success", response[:200])
-                    elif upper.startswith("FAIL"):
-                        registry.record_outcome(cr.template_id, cr.task, "failure", response[:200])
-                    coder_shim.last_result = None  # one-shot — don't double-score
+                # Planner: clarifying question for ambiguous code tasks.
+                if decision.skill == "code":
+                    question = planner.clarification(decision.task)
+                    if question:
+                        say(question)
+                        state.set(JarvisState.LISTENING)
+                        answer_audio = ears.record_utterance(max_seconds=15.0, silence_seconds=1.2)
+                        state.set(JarvisState.THINKING, "transcribing")
+                        answer = ears.transcribe(answer_audio)
+                        log.info("Clarification answer: %r", answer)
+                        if answer.strip():
+                            decision = decision.__class__(  # Routed is frozen
+                                skill=decision.skill,
+                                task=planner.merge_clarification(decision.task, question, answer),
+                            )
+
+                # Confirmation gate for destructive skills.
+                if requires_confirm(decision.skill):
+                    agent = dispatcher.agents.get(decision.skill)
+                    if agent is not None and hasattr(agent, "propose"):
+                        try:
+                            proposal = agent.propose(decision.task)
+                        except Exception:
+                            log.exception("propose() failed; falling back to static template")
+                            proposal = proposal_for(decision.skill, decision.task)
+                    else:
+                        proposal = proposal_for(decision.skill, decision.task)
+                    say(f"{proposal} Confirm?")
+                    state.set(JarvisState.LISTENING)
+                    confirm_audio = ears.record_utterance(max_seconds=8.0, silence_seconds=1.5)
+                    confirm_text = ears.transcribe(confirm_audio)
+                    log.info("Confirmation transcript: %r", confirm_text)
+                    if not is_yes(confirm_text):
+                        say("Cancelled.")
+                        memory.append(transcript, decision.skill, "cancelled by user")
+                        continue
+
+                if decision.skill == "code":
+                    say("On it.")
+
+                state.set(JarvisState.THINKING, decision.task)
+                response = dispatcher.execute(decision)
+                say(response)
+                memory.append(transcript, decision.skill, response)
+
+                # Outcome wiring for the prompt registry.
+                if decision.skill == "qa" and coder_shim.last_result is not None:
+                    cr = coder_shim.last_result
+                    if cr.template_id is not None and cr.task:
+                        upper = response.upper().lstrip()
+                        if upper.startswith("PASS"):
+                            registry.record_outcome(cr.template_id, cr.task, "success", response[:200])
+                        elif upper.startswith("FAIL"):
+                            registry.record_outcome(cr.template_id, cr.task, "failure", response[:200])
+                        coder_shim.last_result = None
+
+                # Stay engaged — loop back to listen for a follow-up without
+                # needing the wake word.
     finally:
         state.set(JarvisState.OFFLINE)
         ears.close()

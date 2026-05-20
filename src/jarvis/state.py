@@ -22,7 +22,8 @@ DEFAULT_PATH = Path.home() / ".jarvis" / "state.json"
 class JarvisState(str, Enum):
     OFFLINE = "offline"      # daemon not running / shutting down
     BOOTING = "booting"      # loading models, starting server
-    IDLE = "idle"            # waiting for the wake word
+    IDLE = "idle"            # passive — must say wake word to engage
+    ENGAGED = "engaged"      # attentive — no wake word needed; auto-sleeps after timeout
     LISTENING = "listening"  # actively recording an utterance
     THINKING = "thinking"    # transcribing / routing / dispatching
     SPEAKING = "speaking"    # TTS playing
