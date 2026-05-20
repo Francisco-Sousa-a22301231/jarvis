@@ -49,6 +49,7 @@ def _make_config(tmp_path: Path, token: str | None = "test-token") -> Config:
         vad_aggressiveness=2,
         silence_seconds=1.0,
         max_utterance_seconds=30.0,
+        engaged_timeout_seconds=90.0,
         log_level="WARNING",
     )
 
