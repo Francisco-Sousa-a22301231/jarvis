@@ -45,6 +45,7 @@ def _make_config(tmp_path: Path, token: str | None = "test-token") -> Config:
         server_host="127.0.0.1",
         server_port=0,  # will be patched per test
         server_token=token,
+        orb_port=0,
         vad_aggressiveness=2,
         silence_seconds=1.0,
         max_utterance_seconds=30.0,

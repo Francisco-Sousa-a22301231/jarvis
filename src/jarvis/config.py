@@ -47,6 +47,7 @@ class Config:
     server_host: str
     server_port: int
     server_token: str | None
+    orb_port: int
     vad_aggressiveness: int
     silence_seconds: float
     max_utterance_seconds: float
@@ -155,6 +156,7 @@ class Config:
                 os.getenv("JARVIS_SERVER_TOKEN")
                 or data.get("server", {}).get("token")
             ),
+            orb_port=int(data.get("orb", {}).get("port", 8780)),
             vad_aggressiveness=int(vad.get("aggressiveness", 2)),
             silence_seconds=float(vad.get("silence_seconds", 1.0)),
             max_utterance_seconds=float(vad.get("max_utterance_seconds", 30.0)),
